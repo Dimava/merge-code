@@ -1,11 +1,20 @@
 {
   "name": "core",
-  "module": "index.ts",
   "type": "module",
+  "module": "index.ts",
+  "scripts": {
+    "fmt": "oxfmt .",
+    "lint": "oxlint --tsconfig=./tsconfig.json .",
+    "typecheck": "tsgo --noEmit",
+    "check": "bun run fmt && bun run lint && bun run typecheck"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@typescript/native-preview": "^7.0.0-dev.20260220.1",
+    "oxfmt": "^0.34.0",
+    "oxlint": "^1.49.0"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^6.0.0-beta"
   }
 }

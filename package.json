@@ -1,18 +1,20 @@
 {
-  "name": "core",
+  "name": "boilerplate",
   "type": "module",
   "module": "index.ts",
   "scripts": {
-    "fmt": "oxfmt .",
-    "lint": "oxlint --tsconfig=./tsconfig.json .",
-    "typecheck": "tsgo --noEmit",
-    "check": "bun run fmt && bun run lint && bun run typecheck"
+    "check": "oxfmt && oxlint --type-aware && tsgo --noEmit",
+    "dev": "bun --hot index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@typescript/native-preview": "^7.0.0-dev.20260220.1",
+    "@unocss/runtime": "^66.6.0",
     "oxfmt": "^0.34.0",
-    "oxlint": "^1.49.0"
+    "oxlint": "^1.49.0",
+    "unocss": "^66.6.0",
+    "vue": "^3.5.28",
+    "@kharenzze/bun-plugin-vue": "^0.3.1"
   },
   "peerDependencies": {
     "typescript": "^6.0.0-beta"

@@ -1,0 +1,2 @@
+[serve.static]
+plugins = ["./pages/vue-plugin.ts"]

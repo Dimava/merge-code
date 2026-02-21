@@ -5,7 +5,6 @@
     "": {
       "name": "core",
       "devDependencies": {
-        "@kharenzze/bun-plugin-vue": "^0.3.1",
         "@types/bun": "latest",
         "@typescript/native-preview": "^7.0.0-dev.20260220.1",
         "@unocss/runtime": "^66.6.0",
@@ -103,8 +102,6 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
-
-    "@kharenzze/bun-plugin-vue": ["@kharenzze/bun-plugin-vue@0.3.1", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-Mun9D8SnTNB7Sbp+G9tbxg85O0coHflpvEGVJrMrogZRF6rM8ZUq71gbFU8PZKpCT2Bqw937KocwnI+a7CB6yg=="],
 
     "@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.34.0", "", { "os": "android", "cpu": "arm" }, "sha512-sqkqjh/Z38l+duOb1HtVqJTAj1grt2ttkobCopC/72+a4Xxz4xUgZPFyQ4HxrYMvyqO/YA0tvM1QbfOu70Gk1Q=="],
 

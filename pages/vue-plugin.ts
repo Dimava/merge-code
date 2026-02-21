@@ -1,6 +1,6 @@
 import type { BunPlugin } from "bun";
 import * as compiler from "@vue/compiler-sfc";
-import * as fs from "fs";
+import * as fs from "node:fs";
 
 function normalizePath(p: string): string {
   return p.replace(/\\/g, "/");

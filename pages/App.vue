@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref } from "vue";
+import { Counter } from "./Counter.tsx";
 
 const count = ref(0);
 </script>
 
 <template>
-  <div class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-8" un-cloak>
-    <h1 class="text-4xl font-bold mb-4 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+  <div
+    class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-8"
+    un-cloak
+  >
+    <h1
+      class="text-4xl font-bold mb-4 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"
+    >
       Vue + UnoCSS
     </h1>
 
@@ -15,20 +21,34 @@ const count = ref(0);
     </p>
 
     <div class="grid grid-cols-3 gap-4 mb-8">
-      <div class="w-20 h-20 rounded-lg bg-red-500 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer" @click="count++">
+      <div
+        class="w-20 h-20 rounded-lg bg-red-500 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer"
+        @click="count++"
+      >
         <span class="text-2xl">🔴</span>
       </div>
-      <div class="w-20 h-20 rounded-lg bg-green-500 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer" @click="count++">
+      <div
+        class="w-20 h-20 rounded-lg bg-green-500 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer"
+        @click="count++"
+      >
         <span class="text-2xl">🟢</span>
       </div>
-      <div class="w-20 h-20 rounded-lg bg-blue-500 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer" @click="count++">
+      <div
+        class="w-20 h-20 rounded-lg bg-blue-500 flex items-center justify-center hover:scale-110 transition-transform cursor-pointer"
+        @click="count++"
+      >
         <span class="text-2xl">🔵</span>
       </div>
     </div>
 
-    <button class="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 transition-all cursor-pointer mb-4" @click="count++">
+    <button
+      class="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 transition-all cursor-pointer mb-4"
+      @click="count++"
+    >
       Clicked {{ count }} times
     </button>
+
+    <Counter />
 
     <div class="mt-8 text-sm text-gray-500">
       <code class="bg-gray-800 px-2 py-1 rounded">Vue 3 + UnoCSS Runtime</code>

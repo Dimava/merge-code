@@ -1,26 +1,26 @@
-import type { BunPlugin } from 'bun';
-import * as compiler from '@vue/compiler-sfc';
-import * as fs from 'fs';
+import type { BunPlugin } from "bun";
+import * as compiler from "@vue/compiler-sfc";
+import * as fs from "fs";
 
 function normalizePath(p: string): string {
-  return p.replace(/\\/g, '/');
+  return p.replace(/\\/g, "/");
 }
 
 const plugin: BunPlugin = {
-  name: 'vue',
+  name: "vue",
   setup(build) {
     build.onResolve({ filter: /\.vue/ }, (args) => {
-      const [, paramsString] = args.path.split('?');
+      const [, paramsString] = args.path.split("?");
       const params = new URLSearchParams(paramsString);
-      const type = params.get('type');
+      const type = params.get("type");
 
       const ns =
-        type === 'script'
-          ? 'sfc-script'
-          : type === 'template'
-            ? 'sfc-template'
-            : type === 'style'
-              ? 'sfc-style'
+        type === "script"
+          ? "sfc-script"
+          : type === "template"
+            ? "sfc-template"
+            : type === "style"
+              ? "sfc-style"
               : undefined;
 
       if (!ns) return;
@@ -36,8 +36,8 @@ const plugin: BunPlugin = {
     const descriptorMap = new Map<string, compiler.SFCDescriptor>();
     const scriptMap = new Map<string, compiler.SFCScriptBlock>();
 
-    build.onLoad({ filter: /.*/, namespace: 'sfc-script' }, (args) => {
-      const path = normalizePath(args.path.split('?')[0]!);
+    build.onLoad({ filter: /.*/, namespace: "sfc-script" }, (args) => {
+      const path = normalizePath(args.path.split("?")[0]!);
       const script = scriptMap.get(path);
 
       if (!script) {
@@ -46,12 +46,12 @@ const plugin: BunPlugin = {
 
       return {
         contents: script.content,
-        loader: script.lang === 'ts' ? 'ts' : 'js',
+        loader: script.lang === "ts" ? "ts" : "js",
       };
     });
 
-    build.onLoad({ filter: /.*/, namespace: 'sfc-template' }, (args) => {
-      const path = normalizePath(args.path.split('?')[0]!);
+    build.onLoad({ filter: /.*/, namespace: "sfc-template" }, (args) => {
+      const path = normalizePath(args.path.split("?")[0]!);
       const descriptor = descriptorMap.get(path);
 
       if (!descriptor) {
@@ -67,19 +67,19 @@ const plugin: BunPlugin = {
         source: descriptor.template!.content,
         filename: path,
         compilerOptions: {
-          bindingMetadata: script.bindings,
-          expressionPlugins: script.lang === 'ts' ? ['typescript'] : undefined,
+          ...(script.bindings && { bindingMetadata: script.bindings }),
+          ...(script.lang === "ts" && { expressionPlugins: ["typescript"] as const }),
         },
       });
 
       return {
         contents: template.code,
-        loader: 'js',
+        loader: "js",
       };
     });
 
-    build.onLoad({ filter: /.*/, namespace: 'sfc-style' }, (args) => {
-      const path = normalizePath(args.path.split('?')[0]!);
+    build.onLoad({ filter: /.*/, namespace: "sfc-style" }, (args) => {
+      const path = normalizePath(args.path.split("?")[0]!);
       const descriptor = descriptorMap.get(path);
       const id = idMap.get(path)!;
 
@@ -90,13 +90,13 @@ const plugin: BunPlugin = {
       const style = compiler.compileStyle({
         id,
         scoped: descriptor.styles.some((s) => s.scoped),
-        source: descriptor.styles.map((s) => s.content).join('\n'),
+        source: descriptor.styles.map((s) => s.content).join("\n"),
         filename: path,
       });
 
       return {
         contents: style.code,
-        loader: 'css',
+        loader: "css",
       };
     });
 
@@ -124,23 +124,27 @@ const plugin: BunPlugin = {
             fileExists: fs.existsSync,
             readFile: (file: string) => {
               if (fs.lstatSync(file).isDirectory()) {
-                const indexTs = file + '/index.ts';
-                const indexDts = file + '/index.d.ts';
-                if (fs.existsSync(indexTs)) return fs.readFileSync(indexTs, 'utf-8');
-                if (fs.existsSync(indexDts)) return fs.readFileSync(indexDts, 'utf-8');
-                return '';
+                const indexTs = file + "/index.ts";
+                const indexDts = file + "/index.d.ts";
+                if (fs.existsSync(indexTs)) return fs.readFileSync(indexTs, "utf-8");
+                if (fs.existsSync(indexDts)) return fs.readFileSync(indexDts, "utf-8");
+                return "";
               }
-              return fs.readFileSync(file, 'utf-8');
+              return fs.readFileSync(file, "utf-8");
             },
           },
         });
         scriptMap.set(filePath, script);
       } else {
         scriptMap.set(filePath, {
-          content: '',
-          lang: 'js',
-          type: 'script',
-          loc: { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 }, source: '' },
+          content: "",
+          lang: "js",
+          type: "script",
+          loc: {
+            start: { line: 0, column: 0, offset: 0 },
+            end: { line: 0, column: 0, offset: 0 },
+            source: "",
+          },
           setup: false,
           bindings: {},
           attrs: {},
@@ -159,24 +163,24 @@ const plugin: BunPlugin = {
 
       if (descriptor.template) {
         code += `import { render } from "${filePath}?type=template";\n`;
-        code += 'script.render = render;\n';
+        code += "script.render = render;\n";
       }
 
-      code += 'export default script;\n';
+      code += "export default script;\n";
 
       return {
         contents: code,
-        loader: 'js',
+        loader: "js",
       };
     });
 
     // Replace Vue compile-time flags in node_modules
     build.onLoad({ filter: /node_modules\/@vue\/(.*)\.js$/ }, async (args) => {
       let source = await Bun.file(args.path).text();
-      source = source.replaceAll('__VUE_PROD_DEVTOOLS__', 'false');
-      source = source.replaceAll('__VUE_OPTIONS_API__', 'false');
-      source = source.replaceAll('__VUE_PROD_HYDRATION_MISMATCH_DETAILS__', 'false');
-      return { contents: source, loader: 'js' };
+      source = source.replaceAll("__VUE_PROD_DEVTOOLS__", "false");
+      source = source.replaceAll("__VUE_OPTIONS_API__", "false");
+      source = source.replaceAll("__VUE_PROD_HYDRATION_MISMATCH_DETAILS__", "false");
+      return { contents: source, loader: "js" };
     });
   },
 };

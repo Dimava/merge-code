@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { execFile } from "child_process";
 import * as path from "path";
 import { StatusBar } from "./status-bar";
+import { MergePanel } from "./panel";
 import type { GitExtension, Repository } from "./git";
 
 function getConfig() {
@@ -147,6 +148,11 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 			},
 		),
+
+		vscode.commands.registerCommand("mergeCode.openPanel", (uri?: vscode.Uri) => {
+			const repo = getRepoForFile(git, uri);
+			MergePanel.open(context.extensionUri, repo);
+		}),
 	);
 }
 

@@ -31,6 +31,10 @@
       {
         "command": "mergeCode.myCommits",
         "title": "Merge Code: Show My Commits"
+      },
+      {
+        "command": "mergeCode.openPanel",
+        "title": "Merge Code: Open Panel"
       }
     ],
     "menus": {
@@ -109,7 +113,8 @@
   },
   "scripts": {
     "check": "oxfmt && oxlint && tsgo --noEmit",
-    "compile": "tsgo -p ./",
+    "build:webview": "bun src/webview/build.ts",
+    "compile": "tsgo -p ./ && bun run build:webview",
     "watch": "tsgo -watch -p ./",
     "package": "vsce package"
   },
@@ -117,8 +122,10 @@
     "@types/node": "^25.3.0",
     "@types/vscode": "^1.85.0",
     "@typescript/native-preview": "latest",
+    "@vue/compiler-sfc": "latest",
     "oxfmt": "latest",
-    "oxlint": "latest"
+    "oxlint": "latest",
+    "vue": "latest"
   },
   "extensionDependencies": ["vscode.git"],
   "peerDependencies": {

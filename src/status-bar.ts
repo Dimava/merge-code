@@ -1,0 +1,95 @@
+import * as vscode from "vscode";
+import type { GitExtension, Repository } from "./git";
+
+export class StatusBar implements vscode.Disposable {
+	private item: vscode.StatusBarItem;
+	private subscriptions: vscode.Disposable[] = [];
+	private repoSubscriptions: vscode.Disposable[] = [];
+
+	constructor(private git: GitExtension) {
+		this.item = vscode.window.createStatusBarItem(
+			vscode.StatusBarAlignment.Right,
+		);
+		this.item.command = "mergeCode.open";
+
+		this.subscriptions.push(
+			vscode.window.onDidChangeActiveTextEditor(() => this.update()),
+			vscode.workspace.onDidChangeConfiguration((e) => {
+				if (e.affectsConfiguration("mergeCode")) this.update();
+			}),
+		);
+
+		const api = this.git.getAPI(1);
+		this.subscriptions.push(
+			api.onDidOpenRepository(() => this.update()),
+			api.onDidCloseRepository(() => this.update()),
+		);
+
+		this.update();
+	}
+
+	private getRepo(): Repository | null {
+		const api = this.git.getAPI(1);
+
+		// If a file is open, use its repo
+		const editor = vscode.window.activeTextEditor;
+		if (editor) {
+			return api.getRepository(editor.document.uri);
+		}
+
+		// No file open — try to find an obvious repo
+		const repos = api.repositories;
+		if (repos.length === 0) return null;
+		if (repos.length === 1) return repos[0]!;
+
+		// Multiple repos: use the first one if they all share the same root
+		const root = repos[0]!.rootUri.fsPath;
+		if (repos.every((r) => r.rootUri.fsPath === root)) {
+			return repos[0]!;
+		}
+
+		return null;
+	}
+
+	private update() {
+		const config = vscode.workspace.getConfiguration("mergeCode");
+		if (!config.get<boolean>("showStatusBar")) {
+			this.item.hide();
+			return;
+		}
+
+		const repo = this.getRepo();
+		if (!repo) {
+			this.item.hide();
+			return;
+		}
+
+		this.watchRepo(repo);
+
+		const unstaged = repo.state.workingTreeChanges.length;
+		const staged = repo.state.indexChanges.length;
+
+		let text = "";
+		if (config.get<boolean>("showBranchName") && repo.state.HEAD?.name) {
+			text += `${repo.state.HEAD.name} `;
+		}
+		text += `$(git-branch) ${unstaged} $(git-commit) ${staged}`;
+
+		this.item.text = text;
+		this.item.tooltip = `Open in Sublime Merge\n\nUnstaged: ${unstaged}\nTo be committed: ${staged}`;
+		this.item.show();
+	}
+
+	private watchRepo(repo: Repository) {
+		this.repoSubscriptions.forEach((s) => s.dispose());
+		this.repoSubscriptions = [
+			repo.state.onDidChange(() => this.update()),
+		];
+	}
+
+	dispose() {
+		this.item.dispose();
+		this.subscriptions.forEach((s) => s.dispose());
+		this.repoSubscriptions.forEach((s) => s.dispose());
+	}
+}

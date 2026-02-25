@@ -1,53 +1,108 @@
 {
   "name": "merge-code",
   "displayName": "Merge Code",
-  "description": "A complete Git GUI for VS Code, inspired by Sublime Merge",
+  "description": "Sublime Merge integration for VS Code",
   "version": "0.0.1",
   "publisher": "dimava",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["SCM Providers"],
-  "activationEvents": [],
+  "activationEvents": ["*"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "mergeCode.open",
-        "title": "Open in Sublime Merge"
+        "title": "Merge Code: Open Repository"
       },
       {
-        "command": "mergeCode.openFile",
-        "title": "Open File in Sublime Merge"
+        "command": "mergeCode.blame",
+        "title": "Merge Code: Blame"
+      },
+      {
+        "command": "mergeCode.fileHistory",
+        "title": "Merge Code: File History"
+      },
+      {
+        "command": "mergeCode.lineHistory",
+        "title": "Merge Code: Line History"
+      },
+      {
+        "command": "mergeCode.myCommits",
+        "title": "Merge Code: Show My Commits"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "mergeCode.open",
+          "when": "config.git.enabled && gitOpenRepositoryCount != 0"
+        },
+        {
+          "command": "mergeCode.blame",
+          "when": "config.git.enabled && gitOpenRepositoryCount != 0"
+        },
+        {
+          "command": "mergeCode.fileHistory",
+          "when": "config.git.enabled && gitOpenRepositoryCount != 0"
+        },
+        {
+          "command": "mergeCode.lineHistory",
+          "when": "config.git.enabled && gitOpenRepositoryCount != 0"
+        },
+        {
+          "command": "mergeCode.myCommits",
+          "when": "config.git.enabled && gitOpenRepositoryCount != 0"
+        }
+      ],
       "scm/title": [
         {
           "command": "mergeCode.open",
           "group": "navigation"
         }
       ],
-      "explorer/context": [
-        {
-          "command": "mergeCode.openFile",
-          "group": "navigation"
-        }
-      ],
       "editor/context": [
         {
-          "command": "mergeCode.openFile",
-          "group": "navigation"
+          "command": "mergeCode.open",
+          "group": "mergeCode@1"
+        },
+        {
+          "command": "mergeCode.blame",
+          "group": "mergeCode@2"
+        },
+        {
+          "command": "mergeCode.fileHistory",
+          "group": "mergeCode@3"
+        },
+        {
+          "command": "mergeCode.lineHistory",
+          "group": "mergeCode@4",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "mergeCode.myCommits",
+          "group": "mergeCode@5"
         }
       ]
     },
     "configuration": {
       "title": "Merge Code",
       "properties": {
-        "mergeCode.sublimeMergePath": {
+        "mergeCode.smerge": {
           "type": "string",
           "default": "smerge",
           "description": "Path to Sublime Merge executable (smerge)"
+        },
+        "mergeCode.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Sublime Merge status bar item with unstaged/staged counts"
+        },
+        "mergeCode.showBranchName": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show current branch name in status bar"
         }
       }
     }
@@ -65,6 +120,7 @@
     "oxfmt": "latest",
     "oxlint": "latest"
   },
+  "extensionDependencies": ["vscode.git"],
   "peerDependencies": {
     "typescript": "6.0.0-beta"
   }

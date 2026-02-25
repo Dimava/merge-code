@@ -1,17 +1,26 @@
 import * as vscode from "vscode";
-import * as path from "path";
-import type { Repository } from "./git";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import type { Repository, Ref } from "./git";
+
+const execFileAsync = promisify(execFile);
+
+// RefType const enum values
+const REF_TYPE_HEAD = 0;
+const REF_TYPE_REMOTE_HEAD = 1;
+const REF_TYPE_TAG = 2;
 
 export class MergePanel {
 	private static current: MergePanel | undefined;
 	private panel: vscode.WebviewPanel;
 	private repo: Repository | undefined;
+	private disposables: vscode.Disposable[] = [];
 
 	static open(extensionUri: vscode.Uri, repo?: Repository) {
 		if (MergePanel.current) {
 			MergePanel.current.repo = repo;
 			MergePanel.current.panel.reveal();
-			MergePanel.current.sendRepoInfo();
+			MergePanel.current.sendLocations();
 			return;
 		}
 		MergePanel.current = new MergePanel(extensionUri, repo);
@@ -35,22 +44,84 @@ export class MergePanel {
 
 		this.panel.webview.onDidReceiveMessage((msg) => {
 			if (msg.type === "ready") {
-				this.sendRepoInfo();
+				this.sendLocations();
+				this.watchRepo();
 			}
 		});
 
 		this.panel.onDidDispose(() => {
 			MergePanel.current = undefined;
+			this.disposables.forEach((d) => d.dispose());
 		});
 	}
 
-	private sendRepoInfo() {
+	private watchRepo() {
 		if (!this.repo) return;
+		this.disposables.push(
+			this.repo.state.onDidChange(() => this.sendLocations()),
+		);
+	}
+
+	private async sendLocations() {
+		if (!this.repo) return;
+		const state = this.repo.state;
+
+		const branches = state.refs
+			.filter((r) => r.type === REF_TYPE_HEAD)
+			.map((r) => ({ name: r.name ?? "", commit: r.commit }));
+
+		const remotes = state.remotes.map((remote) => ({
+			name: remote.name,
+			url: remote.fetchUrl ?? remote.pushUrl ?? "",
+			refs: state.refs
+				.filter(
+					(r) => r.type === REF_TYPE_REMOTE_HEAD && r.remote === remote.name,
+				)
+				.map((r) => ({
+					name: r.name?.replace(`${remote.name}/`, "") ?? "",
+					commit: r.commit,
+				})),
+		}));
+
+		const tags = state.refs
+			.filter((r) => r.type === REF_TYPE_TAG)
+			.map((r) => ({ name: r.name ?? "", commit: r.commit }));
+
+		const stashes = await this.loadStashes();
+
+		const submodules = state.submodules.map((s) => ({
+			name: s.name,
+			path: s.path,
+		}));
+
 		this.panel.webview.postMessage({
-			type: "repoInfo",
+			type: "locations",
 			repoPath: this.repo.rootUri.fsPath,
-			branch: this.repo.state.HEAD?.name ?? "(detached)",
+			head: state.HEAD?.name ?? "(detached)",
+			branches,
+			remotes,
+			tags,
+			stashes,
+			submodules,
 		});
+	}
+
+	private async loadStashes(): Promise<{ label: string; index: number }[]> {
+		if (!this.repo) return [];
+		try {
+			const result = await execFileAsync(
+				"git",
+				["stash", "list", "--format=%gs"],
+				{ cwd: this.repo.rootUri.fsPath },
+			);
+			return result.stdout
+				.trim()
+				.split("\n")
+				.filter((l) => l.length > 0)
+				.map((label, index) => ({ label, index }));
+		} catch {
+			return [];
+		}
 	}
 
 	private getHtml(extensionUri: vscode.Uri): string {
@@ -81,7 +152,8 @@ export class MergePanel {
 }
 
 function getNonce(): string {
-	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	const chars =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 	let result = "";
 	for (let i = 0; i < 32; i++) {
 		result += chars.charAt(Math.floor(Math.random() * chars.length));

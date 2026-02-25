@@ -10,7 +10,7 @@ export class StatusBar implements vscode.Disposable {
 		this.item = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Right,
 		);
-		this.item.command = "mergeCode.open";
+		this.item.command = "mergeCode.openPanel";
 
 		this.subscriptions.push(
 			vscode.window.onDidChangeActiveTextEditor(() => this.update()),
@@ -23,6 +23,11 @@ export class StatusBar implements vscode.Disposable {
 		this.subscriptions.push(
 			api.onDidOpenRepository(() => this.update()),
 			api.onDidCloseRepository(() => this.update()),
+		);
+
+		// Also update when API state changes (repos may not be ready yet)
+		this.subscriptions.push(
+			api.onDidChangeState(() => this.update()),
 		);
 
 		this.update();

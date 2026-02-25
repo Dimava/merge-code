@@ -1,15 +1,8 @@
-# core
+# Merge Code
 
-To install dependencies:
+Open Sublime Merge from VS Code.
 
-```bash
-bun install
-```
+## Commands
 
-To run:
-
-```bash
-bun run dev
-```
-
-This project was created using `bun init` in bun v1.3.9. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+- **Open in Sublime Merge** - opens the workspace root in Sublime Merge
+- **Open File in Sublime Merge** - opens Sublime Merge for the selected file's repo

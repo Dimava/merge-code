@@ -1,2 +1,2 @@
-[serve.static]
-plugins = ["./pages/vue-plugin.ts"]
+[install]
+peer = false

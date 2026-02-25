@@ -1,19 +1,69 @@
 {
-  "name": "boilerplate",
-  "type": "module",
-  "module": "index.ts",
+  "name": "merge-code",
+  "displayName": "Merge Code",
+  "description": "A complete Git GUI for VS Code, inspired by Sublime Merge",
+  "version": "0.0.1",
+  "publisher": "dimava",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["SCM Providers"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mergeCode.open",
+        "title": "Open in Sublime Merge"
+      },
+      {
+        "command": "mergeCode.openFile",
+        "title": "Open File in Sublime Merge"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "mergeCode.open",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "mergeCode.openFile",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "mergeCode.openFile",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Merge Code",
+      "properties": {
+        "mergeCode.sublimeMergePath": {
+          "type": "string",
+          "default": "smerge",
+          "description": "Path to Sublime Merge executable (smerge)"
+        }
+      }
+    }
+  },
   "scripts": {
-    "check": "oxfmt && oxlint --type-aware && tsgo --noEmit",
-    "dev": "bun --hot index.ts"
+    "check": "oxfmt && oxlint && tsgo --noEmit",
+    "compile": "tsgo -p ./",
+    "watch": "tsgo -watch -p ./",
+    "package": "vsce package"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/node": "^25.3.0",
+    "@types/vscode": "^1.85.0",
     "@typescript/native-preview": "latest",
-    "@unocss/runtime": "latest",
     "oxfmt": "latest",
-    "oxlint": "latest",
-    "unocss": "latest",
-    "vue": "latest"
+    "oxlint": "latest"
   },
   "peerDependencies": {
     "typescript": "6.0.0-beta"

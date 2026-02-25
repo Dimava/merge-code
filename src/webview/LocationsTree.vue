@@ -8,8 +8,9 @@ const props = withDefaults(
     description?: string;
     defaultOpen?: boolean;
     nested?: boolean;
+    depth?: number;
   }>(),
-  { count: 0, defaultOpen: false, nested: false },
+  { count: 0, defaultOpen: false, nested: false, depth: 0 },
 );
 
 const open = ref(props.defaultOpen);
@@ -17,7 +18,11 @@ const open = ref(props.defaultOpen);
 
 <template>
   <div :class="['tree-node', { nested }]">
-    <div class="tree-header" @click="open = !open">
+    <div
+      class="tree-header"
+      :style="nested ? { paddingLeft: (depth * 16 + 12) + 'px' } : undefined"
+      @click="open = !open"
+    >
       <span class="chevron" :class="{ open }">&#9654;</span>
       <span class="label">{{ label }}</span>
       <span v-if="count != null" class="count">({{ count }})</span>
@@ -44,8 +49,7 @@ const open = ref(props.defaultOpen);
   letter-spacing: 0.3px;
 }
 .tree-node.nested .tree-header {
-  padding-left: 24px;
-  font-weight: 400;
+  font-weight: 600;
   font-size: inherit;
   letter-spacing: 0;
 }
@@ -78,11 +82,5 @@ const open = ref(props.defaultOpen);
   font-weight: 400;
   margin-left: auto;
   font-size: 11px;
-}
-.tree-children {
-  /* nested leaves get more indent via their own padding */
-}
-.tree-node.nested .tree-children :deep(.tree-leaf) {
-  padding-left: 40px;
 }
 </style>

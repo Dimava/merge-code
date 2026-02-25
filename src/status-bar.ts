@@ -31,6 +31,7 @@ export class StatusBar implements vscode.Disposable {
 		);
 
 		this.update();
+		
 	}
 
 	private getRepo(): Repository | null {

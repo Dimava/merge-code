@@ -30,19 +30,8 @@ function smerge(repoPath: string, args: string[]) {
 	});
 }
 
-function getRepoForFile(
-	git: GitExtension,
-	uri?: vscode.Uri,
-): Repository | undefined {
-	const api = git.getAPI(1);
-	const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
-	if (fileUri) {
-		return api.getRepository(fileUri) ?? undefined;
-	}
-	// No file open - fall back to first/only repo
-	const repos = api.repositories;
-	if (repos.length === 1) return repos[0];
-	return undefined;
+function getRepo(git: GitExtension): Repository | undefined {
+	return git.getAPI(1).repositories[0];
 }
 
 function getActiveSelection() {
@@ -65,7 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("mergeCode.open", (uri?: vscode.Uri) => {
-			const repo = getRepoForFile(git, uri);
+			const repo = getRepo(git);
 			if (!repo) {
 				vscode.window.showErrorMessage("No git repository found");
 				return;
@@ -82,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
 					vscode.window.showErrorMessage("No file open");
 					return;
 				}
-				const repo = getRepoForFile(git, fileUri);
+				const repo = getRepo(git);
 				if (!repo) {
 					vscode.window.showErrorMessage("No git repository found");
 					return;
@@ -102,7 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
 					vscode.window.showErrorMessage("No file open");
 					return;
 				}
-				const repo = getRepoForFile(git, fileUri);
+				const repo = getRepo(git);
 				if (!repo) {
 					vscode.window.showErrorMessage("No git repository found");
 					return;
@@ -118,7 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.window.showErrorMessage("No selection");
 				return;
 			}
-			const repo = getRepoForFile(git, sel.uri);
+			const repo = getRepo(git);
 			if (!repo) {
 				vscode.window.showErrorMessage("No git repository found");
 				return;
@@ -133,7 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"mergeCode.myCommits",
 			(uri?: vscode.Uri) => {
-				const repo = getRepoForFile(git, uri);
+				const repo = getRepo(git);
 				if (!repo) {
 					vscode.window.showErrorMessage("No git repository found");
 					return;
@@ -155,7 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
 		),
 
 		vscode.commands.registerCommand("mergeCode.openPanel", (uri?: vscode.Uri) => {
-			const repo = getRepoForFile(git, uri);
+			const repo = getRepo(git);
 			MergePanel.open(context.extensionUri, repo);
 		}),
 	);

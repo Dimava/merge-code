@@ -34,27 +34,8 @@ export class StatusBar implements vscode.Disposable {
 		
 	}
 
-	private getRepo(): Repository | null {
-		const api = this.git.getAPI(1);
-
-		// If a file is open, use its repo
-		const editor = vscode.window.activeTextEditor;
-		if (editor) {
-			return api.getRepository(editor.document.uri);
-		}
-
-		// No file open — try to find an obvious repo
-		const repos = api.repositories;
-		if (repos.length === 0) return null;
-		if (repos.length === 1) return repos[0]!;
-
-		// Multiple repos: use the first one if they all share the same root
-		const root = repos[0]!.rootUri.fsPath;
-		if (repos.every((r) => r.rootUri.fsPath === root)) {
-			return repos[0]!;
-		}
-
-		return null;
+	private getRepo(): Repository | undefined {
+		return this.git.getAPI(1).repositories[0];
 	}
 
 	private update() {

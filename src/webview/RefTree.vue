@@ -15,7 +15,6 @@ interface FlatRow {
   depth: number;
   isFolder: boolean;
   entry?: RefEntry;
-  childCount: number;
 }
 
 const props = defineProps<{
@@ -36,6 +35,7 @@ function onContext(e: MouseEvent, entry?: RefEntry) {
 }
 
 const collapsed = vueRef<Set<string>>(new Set());
+const hidden = vueRef<Set<string>>(new Set());
 
 function toggle(key: string) {
   const s = new Set(collapsed.value);
@@ -44,11 +44,18 @@ function toggle(key: string) {
   collapsed.value = s;
 }
 
+function toggleEye(e: MouseEvent, key: string) {
+  e.stopPropagation();
+  const s = new Set(hidden.value);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  hidden.value = s;
+}
+
 const rows = computed(() => {
   const result: FlatRow[] = [];
   const base = props.baseDepth ?? 0;
 
-  // Build tree structure first
   interface Node {
     label: string;
     key: string;
@@ -77,16 +84,6 @@ const rows = computed(() => {
     }
   }
 
-  // Flatten with collapse state
-  function countLeaves(children: Map<string, Node>): number {
-    let count = 0;
-    for (const node of children.values()) {
-      if (node.children.size === 0) count++;
-      else count += countLeaves(node.children);
-    }
-    return count;
-  }
-
   function flatten(children: Map<string, Node>, depth: number) {
     for (const node of children.values()) {
       const isFolder = node.children.size > 0;
@@ -96,7 +93,6 @@ const rows = computed(() => {
         depth,
         isFolder,
         entry: node.entry,
-        childCount: isFolder ? countLeaves(node.children) : 0,
       });
       if (isFolder && !collapsed.value.has(node.key)) {
         flatten(node.children, depth + 1);
@@ -112,43 +108,45 @@ const rows = computed(() => {
 <template>
   <template v-for="row in rows" :key="row.key">
     <div
-      v-if="row.isFolder"
-      class="tree-folder"
+      class="tree-row"
       :style="{ paddingLeft: (row.depth * 16 + 12) + 'px' }"
-      @click="toggle(row.key)"
+      :class="{
+        current: row.entry?.name === head,
+        folder: row.isFolder,
+      }"
+      @click="row.isFolder ? toggle(row.key) : undefined"
       @contextmenu="onContext($event, row.entry)"
     >
-      <span class="chevron" :class="{ open: !collapsed.has(row.key) }">&#9654;</span>
-      <span class="folder-label">{{ row.label }}</span>
-      <span v-if="row.entry?.behind" class="badge behind">{{ row.entry.behind }}&darr;</span>
-      <span v-if="row.entry?.ahead" class="badge ahead">{{ row.entry.ahead }}&uarr;</span>
-    </div>
-    <div
-      v-else
-      class="tree-leaf"
-      :style="{ paddingLeft: (row.depth * 16 + 12) + 'px' }"
-      :class="{ current: row.entry?.isHead || row.entry?.name === head }"
-      @contextmenu="onContext($event, row.entry)"
-    >
-      <span class="leaf-name">{{ row.label }}</span>
-      <span v-if="row.entry?.behind" class="badge behind">{{ row.entry.behind }}&darr;</span>
-      <span v-if="row.entry?.ahead" class="badge ahead">{{ row.entry.ahead }}&uarr;</span>
+      <span v-if="row.isFolder" class="chevron" :class="{ open: !collapsed.has(row.key) }">&#9654;</span>
+      <span class="row-label">{{ row.label }}</span>
+      <span v-if="row.entry?.behind" class="badge">{{ row.entry.behind }}&darr;</span>
+      <span v-if="row.entry?.ahead" class="badge">{{ row.entry.ahead }}&uarr;</span>
+      <span
+        class="eye"
+        :class="{ off: hidden.has(row.entry?.name ?? row.key) }"
+        @click.stop="toggleEye($event, row.entry?.name ?? row.key)"
+        title="Show/hide in graph"
+      >&#128065;</span>
     </div>
   </template>
 </template>
 
 <style scoped>
-.tree-folder {
-  padding: 3px 12px;
+.tree-row {
+  padding: 2px 8px 2px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 4px;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 400;
+  height: 22px;
 }
-.tree-folder:hover {
+.tree-row:hover {
   background: var(--vscode-list-hoverBackground);
+}
+.tree-row.current {
+  font-weight: 600;
 }
 .chevron {
   font-size: 8px;
@@ -161,27 +159,7 @@ const rows = computed(() => {
 .chevron.open {
   transform: rotate(90deg);
 }
-.folder-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tree-leaf {
-  padding: 2px 12px 2px 40px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.tree-leaf:hover {
-  background: var(--vscode-list-hoverBackground);
-}
-.tree-leaf.current {
-  font-weight: 600;
-}
-.leaf-name {
+.row-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -194,5 +172,20 @@ const rows = computed(() => {
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   flex-shrink: 0;
+}
+.eye {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.4;
+  cursor: pointer;
+  width: 20px;
+  text-align: center;
+  filter: grayscale(1);
+}
+.eye:hover {
+  opacity: 0.8;
+}
+.eye.off {
+  opacity: 0.15;
 }
 </style>

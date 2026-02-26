@@ -44,12 +44,13 @@ const open = ref(props.defaultOpen);
   gap: 4px;
   padding: 3px 12px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: 700;
+  font-size: 12px;
   letter-spacing: 0.3px;
+  height: 24px;
 }
 .tree-node.nested .tree-header {
-  font-weight: 600;
+  font-weight: 400;
   font-size: inherit;
   letter-spacing: 0;
 }

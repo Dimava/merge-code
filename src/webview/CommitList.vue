@@ -20,47 +20,75 @@ const emit = defineEmits<{
 
 <template>
   <div class="commit-list">
-    <div class="list-header">Commits</div>
-    <div
-      v-for="c in commits"
-      :key="c.hash"
-      class="commit-row"
-      :class="{ selected: c.hash === selected }"
-      @click="emit('select', c.hash)"
-    >
-      <div class="commit-top">
-        <span class="subject">{{ c.subject }}</span>
-        <span v-if="c.refs.length" class="refs">
-          <span v-for="r in c.refs" :key="r" class="ref-badge">{{ r }}</span>
-        </span>
-      </div>
-      <div class="commit-bottom">
-        <span class="author">{{ c.author }}</span>
-        <span class="date">{{ c.date }}</span>
-      </div>
+    <div class="list-header">
+      <span class="tab active">Commits</span>
+      <span class="tab">Files</span>
     </div>
-    <div v-if="commits.length === 0" class="empty">No commits</div>
+    <div class="commits-scroll">
+      <div
+        v-for="(c, i) in commits"
+        :key="c.hash"
+        class="commit-row"
+        :class="{ selected: c.hash === selected }"
+        @click="emit('select', c.hash)"
+      >
+        <div class="graph-col">
+          <div class="graph-line top" />
+          <div class="graph-dot" />
+          <div v-if="i < commits.length - 1" class="graph-line bottom" />
+        </div>
+        <div class="commit-content">
+          <div class="commit-top">
+            <span class="subject">{{ c.subject }}</span>
+            <span v-if="c.refs.length" class="refs">
+              <span v-for="r in c.refs" :key="r" class="ref-badge">{{ r }}</span>
+            </span>
+          </div>
+          <div class="commit-bottom">
+            <span class="author">{{ c.author }}</span>
+            <span class="date">{{ c.date }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-if="commits.length === 0" class="empty">No commits</div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .commit-list {
   height: 100%;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .list-header {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground);
-  padding: 8px 12px 4px;
+  display: flex;
   border-bottom: 1px solid var(--vscode-panel-border, #333);
+  flex-shrink: 0;
+}
+.tab {
+  padding: 6px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 2px solid transparent;
+}
+.tab.active {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder, #007acc);
+}
+.tab:hover {
+  color: var(--vscode-foreground);
+}
+.commits-scroll {
+  flex: 1;
+  overflow: auto;
 }
 .commit-row {
-  padding: 6px 12px;
+  display: flex;
   cursor: pointer;
-  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+  min-height: 44px;
 }
 .commit-row:hover {
   background: var(--vscode-list-hoverBackground);
@@ -69,6 +97,37 @@ const emit = defineEmits<{
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
+.graph-col {
+  width: 28px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+.graph-line {
+  width: 2px;
+  flex: 1;
+  background: var(--vscode-focusBorder, #007acc);
+}
+.graph-line.top {
+  flex: 1;
+}
+.graph-line.bottom {
+  flex: 1;
+}
+.graph-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vscode-focusBorder, #007acc);
+  flex-shrink: 0;
+}
+.commit-content {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px 4px 0;
+}
 .commit-top {
   display: flex;
   align-items: baseline;
@@ -76,6 +135,7 @@ const emit = defineEmits<{
 }
 .subject {
   font-weight: 600;
+  font-size: 13px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -100,7 +160,11 @@ const emit = defineEmits<{
   justify-content: space-between;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
-  margin-top: 2px;
+  margin-top: 1px;
+}
+.commit-row.selected .commit-bottom {
+  color: var(--vscode-list-activeSelectionForeground);
+  opacity: 0.7;
 }
 .author {
   font-style: italic;

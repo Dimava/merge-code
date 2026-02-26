@@ -34,10 +34,15 @@ function getRepoForFile(
 	git: GitExtension,
 	uri?: vscode.Uri,
 ): Repository | undefined {
-	const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
-	if (!fileUri) return undefined;
 	const api = git.getAPI(1);
-	return api.getRepository(fileUri) ?? undefined;
+	const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+	if (fileUri) {
+		return api.getRepository(fileUri) ?? undefined;
+	}
+	// No file open - fall back to first/only repo
+	const repos = api.repositories;
+	if (repos.length === 1) return repos[0];
+	return undefined;
 }
 
 function getActiveSelection() {

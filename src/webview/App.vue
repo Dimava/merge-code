@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from "vue";
+import SplitPane from "./SplitPane.vue";
 import LocationsTree from "./LocationsTree.vue";
 import RefTree from "./RefTree.vue";
+import CommitList from "./CommitList.vue";
+import CommitDetail from "./CommitDetail.vue";
 import ContextMenu from "./ContextMenu.vue";
 import type { RefEntry } from "./RefTree.vue";
+import type { CommitEntry } from "./CommitList.vue";
 import type { MenuItem } from "./ContextMenu.vue";
 
 declare function acquireVsCodeApi(): { postMessage(msg: unknown): void };
@@ -16,6 +20,8 @@ const remotes = ref<{ name: string; url: string; refs: RefEntry[] }[]>([]);
 const tags = ref<RefEntry[]>([]);
 const stashes = ref<{ label: string; index: number }[]>([]);
 const submodules = ref<{ name: string; path: string }[]>([]);
+const commits = ref<CommitEntry[]>([]);
+const selectedCommit = ref<string>();
 
 // Context menu state
 const menu = reactive({
@@ -52,11 +58,11 @@ function branchMenu(e: MouseEvent, b: RefEntry) {
 
 function remoteMenu(e: MouseEvent, name: string, url: string) {
   showMenu(e, [
-    { label: `Fetch from ${name}`, action: "fetchRemote" },
-    { label: `Delete ${name}`, action: "deleteRemote" },
-    { label: `Rename ${name}`, action: "renameRemote" },
-    { label: "Update Remote URL", action: "updateRemoteUrl" },
-    { label: "Copy Remote URL", action: "copyRemoteUrl" },
+    { label: "Fetch", action: "fetchRemote" },
+    { label: "Delete", action: "deleteRemote" },
+    { label: "Rename", action: "renameRemote" },
+    { label: "Update URL", action: "updateRemoteUrl" },
+    { label: "Copy URL", action: "copyRemoteUrl" },
   ], { kind: "remote", name, url });
 }
 
@@ -91,6 +97,10 @@ function submoduleMenu(e: MouseEvent, s: { name: string; path: string }) {
   ], { kind: "submodule", name: s.name, path: s.path });
 }
 
+const selectedCommitData = computed(() =>
+  commits.value.find((c) => c.hash === selectedCommit.value),
+);
+
 onMounted(() => {
   window.addEventListener("message", (e: MessageEvent) => {
     const msg = e.data;
@@ -102,6 +112,8 @@ onMounted(() => {
       tags.value = msg.tags;
       stashes.value = msg.stashes;
       submodules.value = msg.submodules;
+    } else if (msg.type === "commits") {
+      commits.value = msg.commits;
     }
   });
   vscode.postMessage({ type: "ready" });
@@ -115,59 +127,70 @@ const repoName = computed(() => {
 
 <template>
   <div class="root">
-    <header class="header">
-      <span class="repo-name">{{ repoName }}</span>
-      <span class="head-name">{{ head }}</span>
-    </header>
-    <div class="locations">
-      <h2 class="locations-title">Locations</h2>
+    <SplitPane :sizes="[250, 500]" :min-size="120">
+      <template #panel-0>
+        <div class="locations-panel">
+          <div class="panel-header">Locations</div>
 
-      <LocationsTree label="BRANCHES" :count="branches.length" default-open>
-        <RefTree :refs="branches" :base-depth="1" @contextmenu="branchMenu" />
-      </LocationsTree>
-
-      <LocationsTree label="REMOTES" :count="remotes.length" default-open>
-        <template v-for="r in remotes" :key="r.name">
-          <LocationsTree
-            :label="r.name"
-            :count="r.refs.length"
-            :description="r.url"
-            nested
-            default-open
-            @contextmenu.prevent="remoteMenu($event, r.name, r.url)"
-          >
-            <RefTree :refs="r.refs" :base-depth="2" @contextmenu="(e: MouseEvent, entry: RefEntry) => remoteRefMenu(e, r.name, entry.name)" />
+          <LocationsTree label="BRANCHES" :count="branches.length" default-open>
+            <RefTree :refs="branches" :base-depth="1" :head="head" @contextmenu="branchMenu" />
           </LocationsTree>
-        </template>
-      </LocationsTree>
 
-      <LocationsTree label="TAGS" :count="tags.length">
-        <RefTree :refs="tags" :base-depth="1" @contextmenu="tagMenu" />
-      </LocationsTree>
+          <LocationsTree label="REMOTES" :count="remotes.length" default-open>
+            <template v-for="r in remotes" :key="r.name">
+              <LocationsTree
+                :label="r.name"
+                :count="r.refs.length"
+                nested
+                default-open
+                @contextmenu.prevent="remoteMenu($event, r.name, r.url)"
+              >
+                <RefTree :refs="r.refs" :base-depth="2" @contextmenu="(e: MouseEvent, entry: RefEntry) => remoteRefMenu(e, r.name, entry.name)" />
+              </LocationsTree>
+            </template>
+          </LocationsTree>
 
-      <LocationsTree label="STASHES" :count="stashes.length">
-        <div
-          v-for="s in stashes"
-          :key="s.index"
-          class="tree-leaf"
-          @contextmenu.prevent="stashMenu($event, s)"
-        >
-          {{ s.label }}
+          <LocationsTree label="TAGS" :count="tags.length">
+            <RefTree :refs="tags" :base-depth="1" @contextmenu="tagMenu" />
+          </LocationsTree>
+
+          <LocationsTree label="STASHES" :count="stashes.length">
+            <div
+              v-for="s in stashes"
+              :key="s.index"
+              class="tree-leaf"
+              @contextmenu.prevent="stashMenu($event, s)"
+            >
+              {{ s.label }}
+            </div>
+          </LocationsTree>
+
+          <LocationsTree label="SUBMODULES" :count="submodules.length">
+            <div
+              v-for="s in submodules"
+              :key="s.name"
+              class="tree-leaf"
+              @contextmenu.prevent="submoduleMenu($event, s)"
+            >
+              {{ s.name }}
+              <span class="description">{{ s.path }}</span>
+            </div>
+          </LocationsTree>
         </div>
-      </LocationsTree>
+      </template>
 
-      <LocationsTree label="SUBMODULES" :count="submodules.length">
-        <div
-          v-for="s in submodules"
-          :key="s.name"
-          class="tree-leaf"
-          @contextmenu.prevent="submoduleMenu($event, s)"
-        >
-          {{ s.name }}
-          <span class="description">{{ s.path }}</span>
-        </div>
-      </LocationsTree>
-    </div>
+      <template #panel-1>
+        <CommitList
+          :commits="commits"
+          :selected="selectedCommit"
+          @select="selectedCommit = $event"
+        />
+      </template>
+
+      <template #panel-2>
+        <CommitDetail :commit="selectedCommitData" />
+      </template>
+    </SplitPane>
 
     <ContextMenu
       v-if="menu.show"
@@ -186,33 +209,22 @@ const repoName = computed(() => {
   font-size: var(--vscode-font-size, 13px);
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
-  min-height: 100vh;
-  padding: 0;
+  height: 100vh;
+  overflow: hidden;
 }
-.header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, #333);
+.locations-panel {
+  height: 100%;
+  overflow: auto;
+  padding-top: 4px;
 }
-.repo-name {
-  font-weight: 600;
-}
-.head-name {
-  color: var(--vscode-textLink-foreground);
-}
-.locations {
-  padding: 8px 0;
-}
-.locations-title {
+.panel-header {
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--vscode-descriptionForeground);
-  padding: 4px 12px;
-  margin: 0;
+  padding: 4px 12px 8px;
+  text-align: center;
 }
 .tree-leaf {
   padding: 2px 12px 2px 28px;

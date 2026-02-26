@@ -21,6 +21,7 @@ interface FlatRow {
 const props = defineProps<{
   refs: RefEntry[];
   baseDepth?: number;
+  head?: string;
 }>();
 
 const emit = defineEmits<{
@@ -126,7 +127,7 @@ const rows = computed(() => {
       v-else
       class="tree-leaf"
       :style="{ paddingLeft: (row.depth * 16 + 12) + 'px' }"
-      :class="{ current: row.entry?.isHead }"
+      :class="{ current: row.entry?.isHead || row.entry?.name === head }"
       @contextmenu="onContext($event, row.entry)"
     >
       <span class="leaf-name">{{ row.label }}</span>

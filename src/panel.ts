@@ -1,15 +1,10 @@
 import * as vscode from "vscode";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { Repository, Ref } from "./git";
+import type { Repository } from "./git";
 import { log } from "./extension";
 
-const execFileAsync = promisify(execFile);
-
-// RefType const enum values
-const REF_TYPE_HEAD = 0;
-const REF_TYPE_REMOTE_HEAD = 1;
-const REF_TYPE_TAG = 2;
+const exec = promisify(execFile);
 
 export class MergePanel {
 	private static current: MergePanel | undefined;
@@ -47,6 +42,7 @@ export class MergePanel {
 		this.panel.webview.onDidReceiveMessage((msg) => {
 			if (msg.type === "ready") {
 				this.sendLocations();
+				this.sendCommits();
 				this.watchRepo();
 			} else if (msg.type === "action") {
 				this.handleAction(msg.action, msg.context);
@@ -62,78 +58,53 @@ export class MergePanel {
 	private watchRepo() {
 		if (!this.repo) return;
 		this.disposables.push(
-			this.repo.state.onDidChange(() => this.sendLocations()),
+			this.repo.state.onDidChange(() => {
+				this.sendLocations();
+				this.sendCommits();
+			}),
 		);
 	}
+
+	private async git(...args: string[]): Promise<string> {
+		if (!this.repo) throw new Error("No repo");
+		const result = await exec("git", args, {
+			cwd: this.repo.rootUri.fsPath,
+		});
+		return result.stdout.trim();
+	}
+
+	private async gitLines(...args: string[]): Promise<string[]> {
+		const out = await this.git(...args);
+		if (!out) return [];
+		return out.split("\n");
+	}
+
+	// ── Data fetching (all via git CLI for reliability) ──
 
 	private async sendLocations() {
 		if (!this.repo) {
 			log.warn("sendLocations: no repo");
 			return;
 		}
-		const repo = this.repo;
-		const state = repo.state;
-		log.info(`sendLocations: refs=${state.refs.length}, remotes=${state.remotes.length}, HEAD=${state.HEAD?.name ?? "none"}`);
 
+		const [branches, remotes, tags, stashes, submodules, head] =
+			await Promise.all([
+				this.loadBranches(),
+				this.loadRemotes(),
+				this.loadTags(),
+				this.loadStashes(),
+				this.loadSubmodules(),
+				this.git("rev-parse", "--abbrev-ref", "HEAD").catch(() => "(detached)"),
+			]);
 
-		const branchRefs = state.refs.filter((r) => r.type === REF_TYPE_HEAD);
-		const branches = await Promise.all(
-			branchRefs.map(async (r) => {
-				const name = r.name ?? "";
-				// HEAD already has ahead/behind
-				if (state.HEAD?.name === name) {
-					return {
-						name,
-						commit: r.commit,
-						ahead: state.HEAD.ahead,
-						behind: state.HEAD.behind,
-						isHead: true,
-					};
-				}
-				// Try to get ahead/behind for other branches
-				try {
-					const branch = await repo.getBranch(name);
-					return {
-						name,
-						commit: r.commit,
-						ahead: branch.ahead,
-						behind: branch.behind,
-						isHead: false,
-					};
-				} catch {
-					return { name, commit: r.commit, isHead: false };
-				}
-			}),
+		log.info(
+			`sendLocations: branches=${branches.length}, remotes=${remotes.length}, tags=${tags.length}, stashes=${stashes.length}, head=${head}`,
 		);
-
-		const remotes = state.remotes.map((remote) => ({
-			name: remote.name,
-			url: remote.fetchUrl ?? remote.pushUrl ?? "",
-			refs: state.refs
-				.filter(
-					(r) => r.type === REF_TYPE_REMOTE_HEAD && r.remote === remote.name,
-				)
-				.map((r) => ({
-					name: r.name?.replace(`${remote.name}/`, "") ?? "",
-					commit: r.commit,
-				})),
-		}));
-
-		const tags = state.refs
-			.filter((r) => r.type === REF_TYPE_TAG)
-			.map((r) => ({ name: r.name ?? "", commit: r.commit }));
-
-		const stashes = await this.loadStashes();
-
-		const submodules = state.submodules.map((s) => ({
-			name: s.name,
-			path: s.path,
-		}));
 
 		this.panel.webview.postMessage({
 			type: "locations",
 			repoPath: this.repo.rootUri.fsPath,
-			head: state.HEAD?.name ?? "(detached)",
+			head,
 			branches,
 			remotes,
 			tags,
@@ -142,19 +113,126 @@ export class MergePanel {
 		});
 	}
 
-	private async git(...args: string[]): Promise<string> {
-		if (!this.repo) throw new Error("No repo");
-		const result = await execFileAsync("git", args, {
-			cwd: this.repo.rootUri.fsPath,
+	private async loadBranches() {
+		// format: <name>\t<upstream>\t<ahead>\t<behind>\t<commit>
+		const lines = await this.gitLines(
+			"for-each-ref",
+			"--format=%(refname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(objectname:short)",
+			"refs/heads/",
+		);
+		return lines.map((line) => {
+			const [name, upstream, track, commit] = line.split("\t");
+			let ahead: number | undefined;
+			let behind: number | undefined;
+			if (track) {
+				const aheadMatch = track!.match(/ahead (\d+)/);
+				const behindMatch = track!.match(/behind (\d+)/);
+				if (aheadMatch) ahead = Number(aheadMatch[1]);
+				if (behindMatch) behind = Number(behindMatch[1]);
+			}
+			return { name: name!, commit, upstream, ahead, behind };
 		});
-		return result.stdout.trim();
 	}
+
+	private async loadRemotes() {
+		const remoteNames = await this.gitLines("remote");
+		return Promise.all(
+			remoteNames.map(async (name) => {
+				const url = await this.git("remote", "get-url", name).catch(
+					() => "",
+				);
+				const refLines = await this.gitLines(
+					"for-each-ref",
+					"--format=%(refname:short)\t%(objectname:short)",
+					`refs/remotes/${name}/`,
+				);
+				const refs = refLines
+					.filter((l) => !l.includes("/HEAD"))
+					.map((l) => {
+						const [fullName, commit] = l.split("\t");
+						return {
+							name: fullName!.replace(`${name}/`, ""),
+							commit,
+						};
+					});
+				return { name, url, refs };
+			}),
+		);
+	}
+
+	private async loadTags() {
+		const lines = await this.gitLines(
+			"for-each-ref",
+			"--format=%(refname:short)\t%(objectname:short)",
+			"--sort=-creatordate",
+			"refs/tags/",
+		);
+		return lines.map((l) => {
+			const [name, commit] = l.split("\t");
+			return { name: name!, commit };
+		});
+	}
+
+	private async loadStashes() {
+		const lines = await this.gitLines("stash", "list", "--format=%gs");
+		return lines.map((label, index) => ({ label, index }));
+	}
+
+	private async loadSubmodules() {
+		try {
+			const lines = await this.gitLines(
+				"config",
+				"--file",
+				".gitmodules",
+				"--get-regexp",
+				"^submodule\\..*\\.path$",
+			);
+			return lines.map((l) => {
+				const match = l.match(/^submodule\.(.+)\.path\s+(.+)$/);
+				return {
+					name: match?.[1] ?? l,
+					path: match?.[2] ?? l,
+				};
+			});
+		} catch {
+			return [];
+		}
+	}
+
+	private async sendCommits() {
+		if (!this.repo) return;
+		try {
+			const lines = await this.gitLines(
+				"log",
+				"--all",
+				"--max-count=100",
+				"--format=%H\t%h\t%s\t%an\t%ar\t%D",
+			);
+			const commits = lines.map((l) => {
+				const [hash, short, subject, author, date, refs] = l.split("\t");
+				return {
+					hash,
+					short,
+					subject,
+					author,
+					date,
+					refs: refs
+						? refs!.split(", ").filter((r) => r.length > 0)
+						: [],
+				};
+			});
+			this.panel.webview.postMessage({ type: "commits", commits });
+		} catch (err) {
+			log.error(`sendCommits failed: ${err}`);
+		}
+	}
+
+	// ── Actions ──
 
 	private async handleAction(action: string, ctx: Record<string, unknown>) {
 		if (!this.repo) return;
 		try {
 			switch (action) {
-				// Branch actions
 				case "checkout":
 					await this.repo.checkout(ctx.name as string);
 					break;
@@ -168,10 +246,10 @@ export class MergePanel {
 					await this.repo.deleteBranch(ctx.name as string);
 					break;
 				case "copyName":
-					await vscode.env.clipboard.writeText(ctx.name as string ?? ctx.path as string);
+					await vscode.env.clipboard.writeText(
+						(ctx.name as string) ?? (ctx.path as string),
+					);
 					break;
-
-				// Remote actions
 				case "fetchRemote":
 					await this.repo.fetch(ctx.name as string);
 					break;
@@ -183,9 +261,13 @@ export class MergePanel {
 						prompt: `Rename remote "${ctx.name}"`,
 						value: ctx.name as string,
 					});
-					if (newName) {
-						await this.git("remote", "rename", ctx.name as string, newName);
-					}
+					if (newName)
+						await this.git(
+							"remote",
+							"rename",
+							ctx.name as string,
+							newName,
+						);
 					break;
 				}
 				case "updateRemoteUrl": {
@@ -193,26 +275,21 @@ export class MergePanel {
 						prompt: `New URL for remote "${ctx.name}"`,
 						value: ctx.url as string,
 					});
-					if (newUrl) {
+					if (newUrl)
 						await this.git(
 							"remote",
 							"set-url",
 							ctx.name as string,
 							newUrl,
 						);
-					}
 					break;
 				}
 				case "copyRemoteUrl":
 					await vscode.env.clipboard.writeText(ctx.url as string);
 					break;
-
-				// Tag actions
 				case "deleteTag":
 					await this.git("tag", "-d", ctx.name as string);
 					break;
-
-				// Stash actions
 				case "popStash":
 					await this.git("stash", "pop", `stash@{${ctx.index}}`);
 					break;
@@ -222,8 +299,6 @@ export class MergePanel {
 				case "dropStash":
 					await this.git("stash", "drop", `stash@{${ctx.index}}`);
 					break;
-
-				// Submodule actions
 				case "openSubmodule": {
 					const subPath = vscode.Uri.joinPath(
 						this.repo.rootUri,
@@ -249,6 +324,7 @@ export class MergePanel {
 					break;
 			}
 			this.sendLocations();
+			this.sendCommits();
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.error(`Action "${action}" failed: ${msg}`);
@@ -256,23 +332,7 @@ export class MergePanel {
 		}
 	}
 
-	private async loadStashes(): Promise<{ label: string; index: number }[]> {
-		if (!this.repo) return [];
-		try {
-			const result = await execFileAsync(
-				"git",
-				["stash", "list", "--format=%gs"],
-				{ cwd: this.repo.rootUri.fsPath },
-			);
-			return result.stdout
-				.trim()
-				.split("\n")
-				.filter((l) => l.length > 0)
-				.map((label, index) => ({ label, index }));
-		} catch {
-			return [];
-		}
-	}
+	// ── HTML ──
 
 	private getHtml(extensionUri: vscode.Uri): string {
 		const webviewDir = vscode.Uri.joinPath(extensionUri, "out", "webview");

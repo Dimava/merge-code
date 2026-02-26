@@ -33,10 +33,27 @@ function smerge(repoPath: string, args: string[]) {
 }
 
 function getRepo(git: GitExtension): Repository | undefined {
-	const repos = git.getAPI(1).repositories;
+	const api = git.getAPI(1);
+	const repos = api.repositories;
 	log.info(`getRepo: ${repos.length} repos available`);
+
+	// Prefer repo matching a workspace folder (not a worktree)
+	const folders = vscode.workspace.workspaceFolders;
+	if (folders) {
+		for (const folder of folders) {
+			const match = repos.find(
+				(r) => r.rootUri.fsPath === folder.uri.fsPath,
+			);
+			if (match) {
+				log.info(`getRepo: matched workspace folder ${match.rootUri.fsPath}`);
+				return match;
+			}
+		}
+	}
+
+	// Fallback to first repo
 	if (repos[0]) {
-		log.info(`getRepo: using ${repos[0].rootUri.fsPath}`);
+		log.info(`getRepo: fallback to ${repos[0].rootUri.fsPath}`);
 	}
 	return repos[0];
 }

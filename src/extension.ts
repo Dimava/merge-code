@@ -5,6 +5,8 @@ import { StatusBar } from "./status-bar";
 import { MergePanel } from "./panel";
 import type { GitExtension, Repository } from "./git";
 
+export const log = vscode.window.createOutputChannel("Merge Code", { log: true });
+
 function getConfig() {
 	return vscode.workspace.getConfiguration("mergeCode");
 }
@@ -31,7 +33,12 @@ function smerge(repoPath: string, args: string[]) {
 }
 
 function getRepo(git: GitExtension): Repository | undefined {
-	return git.getAPI(1).repositories[0];
+	const repos = git.getAPI(1).repositories;
+	log.info(`getRepo: ${repos.length} repos available`);
+	if (repos[0]) {
+		log.info(`getRepo: using ${repos[0].rootUri.fsPath}`);
+	}
+	return repos[0];
 }
 
 function getActiveSelection() {
@@ -45,9 +52,23 @@ function getActiveSelection() {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+	log.info("Merge Code activating...");
+
 	const gitExt = vscode.extensions.getExtension<GitExtension>("vscode.git");
-	if (!gitExt) return;
+	if (!gitExt) {
+		log.error("vscode.git extension not found");
+		return;
+	}
 	const git = gitExt.exports;
+	const api = git.getAPI(1);
+	log.info(`Git API state: ${api.state}, repos: ${api.repositories.length}`);
+
+	api.onDidChangeState((state) => {
+		log.info(`Git API state changed: ${state}, repos: ${api.repositories.length}`);
+	});
+	api.onDidOpenRepository((repo) => {
+		log.info(`Repo opened: ${repo.rootUri.fsPath}`);
+	});
 
 	const statusBar = new StatusBar(git);
 	context.subscriptions.push(statusBar);

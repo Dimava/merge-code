@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type { Repository, Ref } from "./git";
+import { log } from "./extension";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +18,7 @@ export class MergePanel {
 	private disposables: vscode.Disposable[] = [];
 
 	static open(extensionUri: vscode.Uri, repo?: Repository) {
+		log.info(`MergePanel.open: repo=${repo?.rootUri.fsPath ?? "none"}`);
 		if (MergePanel.current) {
 			MergePanel.current.repo = repo;
 			MergePanel.current.panel.reveal();
@@ -65,9 +67,14 @@ export class MergePanel {
 	}
 
 	private async sendLocations() {
-		if (!this.repo) return;
+		if (!this.repo) {
+			log.warn("sendLocations: no repo");
+			return;
+		}
 		const repo = this.repo;
 		const state = repo.state;
+		log.info(`sendLocations: refs=${state.refs.length}, remotes=${state.remotes.length}, HEAD=${state.HEAD?.name ?? "none"}`);
+
 
 		const branchRefs = state.refs.filter((r) => r.type === REF_TYPE_HEAD);
 		const branches = await Promise.all(
@@ -244,6 +251,7 @@ export class MergePanel {
 			this.sendLocations();
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
+			log.error(`Action "${action}" failed: ${msg}`);
 			vscode.window.showErrorMessage(`Action failed: ${msg}`);
 		}
 	}

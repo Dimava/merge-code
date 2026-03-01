@@ -1,15 +1,33 @@
 {
   "name": "merge-code",
   "displayName": "Merge Code",
-  "description": "Sublime Merge integration for VS Code",
   "version": "0.0.1",
+  "description": "Sublime Merge integration for VS Code",
+  "categories": [
+    "SCM Providers"
+  ],
   "publisher": "dimava",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "categories": ["SCM Providers"],
-  "activationEvents": ["*"],
   "main": "./out/extension.js",
+  "scripts": {
+    "check": "oxfmt && oxlint --type-aware && tsgo --noEmit",
+    "build:webview": "bun src/webview/build.ts",
+    "compile": "tsgo -p ./ && bun run build:webview",
+    "dev": "tsgo -p ./ && bun run build:webview && code --extensionDevelopmentPath=D:/tools/merge-code D:/tools/merge-code",
+    "watch": "tsgo -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript/native-preview": "latest",
+    "@vue/compiler-sfc": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "vue": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "6.0.0-beta"
+  },
   "contributes": {
     "commands": [
       {
@@ -111,24 +129,13 @@
       }
     }
   },
-  "scripts": {
-    "check": "oxfmt && oxlint && tsgo --noEmit",
-    "build:webview": "bun src/webview/build.ts",
-    "compile": "tsgo -p ./ && bun run build:webview",
-    "watch": "tsgo -watch -p ./",
-    "package": "vsce package"
-  },
-  "devDependencies": {
-    "@types/node": "^25.3.0",
-    "@types/vscode": "^1.85.0",
-    "@typescript/native-preview": "latest",
-    "@vue/compiler-sfc": "latest",
-    "oxfmt": "latest",
-    "oxlint": "latest",
-    "vue": "latest"
-  },
-  "extensionDependencies": ["vscode.git"],
-  "peerDependencies": {
-    "typescript": "6.0.0-beta"
+  "activationEvents": [
+    "*"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
   }
 }

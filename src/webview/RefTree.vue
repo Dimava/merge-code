@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref as vueRef } from "vue";
+import { computed, ref as vueRef, watch } from "vue";
 
 export interface RefEntry {
   name: string;
@@ -15,16 +15,21 @@ interface FlatRow {
   depth: number;
   isFolder: boolean;
   entry?: RefEntry;
+  pinned: boolean;
 }
 
 const props = defineProps<{
   refs: RefEntry[];
   baseDepth?: number;
   head?: string;
+  initialPinned?: string[];
 }>();
 
 const emit = defineEmits<{
   contextmenu: [e: MouseEvent, entry: RefEntry];
+  hiddenChange: [hidden: Set<string>];
+  pinnedChange: [pinned: Set<string>];
+  clickRef: [entry: RefEntry];
 }>();
 
 function onContext(e: MouseEvent, entry?: RefEntry) {
@@ -36,6 +41,34 @@ function onContext(e: MouseEvent, entry?: RefEntry) {
 
 const collapsed = vueRef<Set<string>>(new Set());
 const hidden = vueRef<Set<string>>(new Set());
+const pinned = vueRef<Set<string>>(new Set(props.initialPinned));
+
+watch(hidden, (val) => emit("hiddenChange", val), { deep: true });
+watch(pinned, (val) => emit("pinnedChange", val), { deep: true });
+
+watch(
+  () => props.initialPinned,
+  (val) => {
+    if (val) pinned.value = new Set(val);
+  },
+);
+
+watch(
+  () => props.refs,
+  (refs) => {
+    const names = new Set(refs.map((r) => r.name));
+    let changed = false;
+    for (const name of pinned.value) {
+      if (!names.has(name)) {
+        changed = true;
+        break;
+      }
+    }
+    if (changed) {
+      pinned.value = new Set([...pinned.value].filter((n) => names.has(n)));
+    }
+  },
+);
 
 function toggle(key: string) {
   const s = new Set(collapsed.value);
@@ -44,12 +77,48 @@ function toggle(key: string) {
   collapsed.value = s;
 }
 
-function toggleEye(e: MouseEvent, key: string) {
+function childRefNames(folderKey: string): string[] {
+  return props.refs
+    .filter((r) => r.name.startsWith(folderKey + "/") || r.name === folderKey)
+    .map((r) => r.name);
+}
+
+function toggleEye(e: MouseEvent, key: string, isFolder: boolean) {
   e.stopPropagation();
   const s = new Set(hidden.value);
+  if (isFolder) {
+    const children = childRefNames(key);
+    const allHidden = children.length > 0 && children.every((n) => s.has(n));
+    for (const n of children) {
+      if (allHidden) s.delete(n);
+      else s.add(n);
+    }
+  } else {
+    if (s.has(key)) s.delete(key);
+    else s.add(key);
+  }
+  hidden.value = s;
+}
+
+function isFolderHidden(key: string): boolean {
+  const children = childRefNames(key);
+  return children.length > 0 && children.every((n) => hidden.value.has(n));
+}
+
+function togglePin(e: MouseEvent, key: string) {
+  e.stopPropagation();
+  const s = new Set(pinned.value);
   if (s.has(key)) s.delete(key);
   else s.add(key);
-  hidden.value = s;
+  pinned.value = s;
+}
+
+function onRowClick(row: FlatRow) {
+  if (row.isFolder) {
+    toggle(row.key);
+  } else if (row.entry) {
+    emit("clickRef", row.entry);
+  }
 }
 
 const rows = computed(() => {
@@ -85,14 +154,24 @@ const rows = computed(() => {
   }
 
   function flatten(children: Map<string, Node>, depth: number) {
-    for (const node of children.values()) {
+    // Sort: pinned first, then alphabetical
+    const nodes = [...children.values()];
+    nodes.sort((a, b) => {
+      const aPin = pinned.value.has(a.entry?.name ?? a.key);
+      const bPin = pinned.value.has(b.entry?.name ?? b.key);
+      if (aPin !== bPin) return aPin ? -1 : 1;
+      return 0;
+    });
+    for (const node of nodes) {
       const isFolder = node.children.size > 0;
+      const key = node.entry?.name ?? node.key;
       result.push({
         key: node.key,
         label: node.label,
         depth,
         isFolder,
         entry: node.entry,
+        pinned: pinned.value.has(key),
       });
       if (isFolder && !collapsed.value.has(node.key)) {
         flatten(node.children, depth + 1);
@@ -109,38 +188,56 @@ const rows = computed(() => {
   <template v-for="row in rows" :key="row.key">
     <div
       class="tree-row"
-      :style="{ paddingLeft: (row.depth * 16 + 12) + 'px' }"
+      :style="{ paddingLeft: row.depth * 16 + 12 + 'px' }"
       :class="{
         current: row.entry?.name === head,
         folder: row.isFolder,
       }"
-      @click="row.isFolder ? toggle(row.key) : undefined"
+      @click="onRowClick(row)"
       @contextmenu="onContext($event, row.entry)"
     >
-      <span v-if="row.isFolder" class="chevron" :class="{ open: !collapsed.has(row.key) }">&#9654;</span>
+      <span v-if="row.isFolder" class="chevron" :class="{ open: !collapsed.has(row.key) }"
+        >&#9654;</span
+      >
+      <span v-else class="chevron-spacer" />
       <span class="row-label">{{ row.label }}</span>
       <span v-if="row.entry?.behind" class="badge">{{ row.entry.behind }}&darr;</span>
       <span v-if="row.entry?.ahead" class="badge">{{ row.entry.ahead }}&uarr;</span>
-      <span
-        class="eye"
-        :class="{ off: hidden.has(row.entry?.name ?? row.key) }"
-        @click.stop="toggleEye($event, row.entry?.name ?? row.key)"
-        title="Show/hide in graph"
-      >&#128065;</span>
+      <span class="row-actions">
+        <span
+          class="pin"
+          :class="{ active: row.pinned }"
+          @click.stop="togglePin($event, row.entry?.name ?? row.key)"
+          title="Pin to top"
+          >&#128204;</span
+        >
+        <span
+          class="eye"
+          :class="{
+            off: row.isFolder ? isFolderHidden(row.key) : hidden.has(row.entry?.name ?? row.key),
+          }"
+          @click.stop="
+            toggleEye($event, row.isFolder ? row.key : (row.entry?.name ?? row.key), row.isFolder)
+          "
+          title="Show/hide in graph"
+          >&#128065;</span
+        >
+      </span>
     </div>
   </template>
 </template>
 
 <style scoped>
 .tree-row {
-  padding: 2px 8px 2px 12px;
+  padding: 0 4px 0 0;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   white-space: nowrap;
   font-weight: 400;
-  height: 22px;
+  height: 20px;
+  font-size: 12px;
 }
 .tree-row:hover {
   background: var(--vscode-list-hoverBackground);
@@ -149,15 +246,20 @@ const rows = computed(() => {
   font-weight: 600;
 }
 .chevron {
-  font-size: 8px;
+  font-size: 10px;
   transition: transform 0.15s;
   display: inline-block;
-  width: 12px;
+  width: 14px;
   text-align: center;
   flex-shrink: 0;
 }
 .chevron.open {
   transform: rotate(90deg);
+}
+.chevron-spacer {
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
 }
 .row-label {
   flex: 1;
@@ -166,26 +268,60 @@ const rows = computed(() => {
   text-overflow: ellipsis;
 }
 .badge {
-  font-size: 11px;
-  padding: 0 4px;
-  border-radius: 3px;
+  font-size: 10px;
+  padding: 0 3px;
+  border-radius: 2px;
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   flex-shrink: 0;
 }
-.eye {
+.row-actions {
+  display: flex;
+  gap: 0;
   flex-shrink: 0;
-  font-size: 14px;
-  opacity: 0.4;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tree-row:hover .row-actions {
+  opacity: 1;
+}
+/* Always show if pin is active or eye is off */
+.pin.active,
+.eye.off {
+  opacity: 1 !important;
+}
+/* If any action is always-visible, show the container */
+.row-actions:has(.pin.active),
+.row-actions:has(.eye.off) {
+  opacity: 1;
+}
+.eye {
+  font-size: 12px;
+  opacity: 0.3;
   cursor: pointer;
-  width: 20px;
+  width: 16px;
   text-align: center;
   filter: grayscale(1);
 }
 .eye:hover {
-  opacity: 0.8;
+  opacity: 0.7;
 }
 .eye.off {
   opacity: 0.15;
+}
+.pin {
+  font-size: 11px;
+  opacity: 0.2;
+  cursor: pointer;
+  width: 16px;
+  text-align: center;
+  filter: grayscale(1);
+}
+.pin:hover {
+  opacity: 0.6;
+}
+.pin.active {
+  opacity: 0.7;
+  filter: none;
 }
 </style>

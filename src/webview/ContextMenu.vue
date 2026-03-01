@@ -40,7 +40,10 @@ onUnmounted(() => {
       v-for="item in items"
       :key="item.action"
       class="menu-item"
-      @click="emit('select', item.action); emit('close')"
+      @click="
+        emit('select', item.action);
+        emit('close');
+      "
     >
       {{ item.label }}
     </div>

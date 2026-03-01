@@ -55,11 +55,7 @@ onUnmounted(() => {
       <div class="pane" :style="{ width: size + 'px' }">
         <slot :name="'panel-' + i" />
       </div>
-      <div
-        v-if="i < panelSizes.length - 1"
-        class="divider"
-        @mousedown="onMouseDown($event, i)"
-      />
+      <div v-if="i < panelSizes.length - 1" class="divider" @mousedown="onMouseDown($event, i)" />
     </template>
   </div>
 </template>
@@ -75,7 +71,7 @@ onUnmounted(() => {
   user-select: none;
 }
 .pane {
-  overflow: auto;
+  overflow: hidden;
   flex-shrink: 0;
 }
 .pane:last-of-type {

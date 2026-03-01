@@ -9,24 +9,43 @@ const props = withDefaults(
     defaultOpen?: boolean;
     nested?: boolean;
     depth?: number;
+    eyeOff?: boolean;
+    showEye?: boolean;
   }>(),
-  { count: 0, defaultOpen: false, nested: false, depth: 0 },
+  { count: 0, defaultOpen: false, nested: false, depth: 0, eyeOff: false, showEye: false },
 );
 
+const emit = defineEmits<{
+  toggleEye: [];
+}>();
+
 const open = ref(props.defaultOpen);
+
+function onEyeClick(e: MouseEvent) {
+  e.stopPropagation();
+  emit("toggleEye");
+}
 </script>
 
 <template>
   <div :class="['tree-node', { nested }]">
     <div
       class="tree-header"
-      :style="nested ? { paddingLeft: (depth * 16 + 12) + 'px' } : undefined"
+      :style="nested ? { paddingLeft: depth * 16 + 12 + 'px' } : undefined"
       @click="open = !open"
     >
       <span class="chevron" :class="{ open }">&#9654;</span>
       <span class="label">{{ label }}</span>
       <span v-if="count != null" class="count">({{ count }})</span>
       <span v-if="description" class="desc">{{ description }}</span>
+      <span
+        v-if="showEye"
+        class="eye"
+        :class="{ off: eyeOff }"
+        @click="onEyeClick"
+        title="Show/hide all in graph"
+        >&#128065;</span
+      >
     </div>
     <div v-if="open" class="tree-children">
       <slot />
@@ -41,27 +60,28 @@ const open = ref(props.defaultOpen);
 .tree-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 12px;
+  gap: 3px;
+  padding: 1px 8px;
   cursor: pointer;
   font-weight: 700;
   font-size: 12px;
   letter-spacing: 0.3px;
-  height: 24px;
+  height: 22px;
 }
 .tree-node.nested .tree-header {
   font-weight: 400;
-  font-size: inherit;
+  font-size: 12px;
   letter-spacing: 0;
+  height: 20px;
 }
 .tree-header:hover {
   background: var(--vscode-list-hoverBackground);
 }
 .chevron {
-  font-size: 8px;
+  font-size: 11px;
   transition: transform 0.15s;
   display: inline-block;
-  width: 12px;
+  width: 14px;
   text-align: center;
   flex-shrink: 0;
 }
@@ -83,5 +103,25 @@ const open = ref(props.defaultOpen);
   font-weight: 400;
   margin-left: auto;
   font-size: 11px;
+}
+.eye {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0;
+  cursor: pointer;
+  width: 16px;
+  text-align: center;
+  filter: grayscale(1);
+  margin-left: auto;
+  transition: opacity 0.15s;
+}
+.tree-header:hover .eye {
+  opacity: 0.3;
+}
+.eye:hover {
+  opacity: 0.7 !important;
+}
+.eye.off {
+  opacity: 0.15;
 }
 </style>

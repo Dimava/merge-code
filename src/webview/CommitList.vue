@@ -501,7 +501,7 @@ watch(
 .commit-row.uncommitted {
   opacity: 0.85;
 }
-.commit-row.dimmed {
+.commit-row.dimmed .commit-content {
   opacity: 0.3;
 }
 .graph-svg {

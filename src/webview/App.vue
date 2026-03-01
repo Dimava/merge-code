@@ -146,14 +146,14 @@ if (instance) {
         err !== null &&
         "message" in err &&
         typeof (err as { message?: unknown }).message === "string"
-          ? ((err as { message: string }).message)
+          ? (err as { message: string }).message
           : undefined,
       stack:
         typeof err === "object" &&
         err !== null &&
         "stack" in err &&
         typeof (err as { stack?: unknown }).stack === "string"
-          ? ((err as { stack: string }).stack)
+          ? (err as { stack: string }).stack
           : undefined,
       err,
     };

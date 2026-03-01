@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { execFile } from "child_process";
 import * as path from "path";
+import * as fs from "fs";
 import { StatusBar } from "./status-bar";
 import { MergePanel } from "./panel";
 import type { GitExtension, Repository } from "./git";
@@ -31,23 +32,37 @@ function getRepo(git: GitExtension): Repository | undefined {
   const repos = api.repositories;
   log.info(`getRepo: ${repos.length} repos available`);
 
-  // Prefer repo matching a workspace folder (not a worktree)
-  const folders = vscode.workspace.workspaceFolders;
-  if (folders) {
-    for (const folder of folders) {
-      const match = repos.find((r) => r.rootUri.fsPath === folder.uri.fsPath);
-      if (match) {
-        log.info(`getRepo: matched workspace folder ${match.rootUri.fsPath}`);
-        return match;
-      }
-    }
+  // Use only the workspace-root repo (no fallbacks).
+  const targetFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!targetFolder) {
+    log.warn("getRepo: no workspace root folder to resolve current repo");
+    return undefined;
+  }
+  const gitMarker = path.join(targetFolder.uri.fsPath, ".git");
+  if (!fs.existsSync(gitMarker)) {
+    log.warn(`getRepo: workspace root has no .git marker at ${gitMarker}`);
+    return undefined;
   }
 
-  // Fallback to first repo
-  if (repos[0]) {
-    log.info(`getRepo: fallback to ${repos[0].rootUri.fsPath}`);
+  const normalizedTarget = path.normalize(targetFolder.uri.fsPath).toLowerCase();
+  const match = repos.find(
+    (r) => path.normalize(r.rootUri.fsPath).toLowerCase() === normalizedTarget,
+  );
+  if (match) {
+    log.info(`getRepo: matched current workspace repo ${match.rootUri.fsPath}`);
+    return match;
   }
-  return repos[0];
+
+  log.warn(`getRepo: no repo exactly matches current workspace folder ${targetFolder.uri.fsPath}`);
+  return undefined;
+}
+
+function getActiveWorkspaceRepoRoot(): string | undefined {
+  const rootFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!rootFolder) return undefined;
+  const gitMarker = path.join(rootFolder.uri.fsPath, ".git");
+  if (!fs.existsSync(gitMarker)) return undefined;
+  return path.normalize(rootFolder.uri.fsPath).toLowerCase();
 }
 
 function getActiveSelection() {
@@ -76,6 +91,10 @@ export function activate(context: vscode.ExtensionContext) {
     log.info(`Git API state changed: ${state}, repos: ${api.repositories.length}`);
   });
   api.onDidOpenRepository((repo) => {
+    const activeRepoRoot = getActiveWorkspaceRepoRoot();
+    if (!activeRepoRoot) return;
+    const openedRoot = path.normalize(repo.rootUri.fsPath).toLowerCase();
+    if (openedRoot !== activeRepoRoot) return;
     log.info(`Repo opened: ${repo.rootUri.fsPath}`);
   });
 

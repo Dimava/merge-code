@@ -12,20 +12,42 @@ interface PinnedRefs {
   tags: string[];
 }
 
+interface HideConfig {
+  categories: {
+    branches: boolean;
+    remotes: boolean;
+    remoteCategories: Record<string, boolean>;
+    tags: boolean;
+    stashes: boolean;
+  };
+  targets: string[];
+}
+
 export class MergePanel {
   private static current: MergePanel | undefined;
   private panel: vscode.WebviewPanel;
   private repo: Repository | undefined;
   private disposables: vscode.Disposable[] = [];
-  private hiddenRefs: string[] = [];
+  private hideConfig: HideConfig = {
+    categories: {
+      branches: false,
+      remotes: false,
+      remoteCategories: {},
+      tags: false,
+      stashes: false,
+    },
+    targets: [],
+  };
   private context: vscode.ExtensionContext;
 
   static open(context: vscode.ExtensionContext, repo?: Repository) {
     log.info(`MergePanel.open: repo=${repo?.rootUri.fsPath ?? "none"}`);
     if (MergePanel.current) {
       MergePanel.current.repo = repo;
+      MergePanel.current.resetHiddenRefs();
       MergePanel.current.panel.reveal();
       void MergePanel.current.sendLocations();
+      void MergePanel.current.sendCommits();
       return;
     }
     MergePanel.current = new MergePanel(context, repo);
@@ -67,16 +89,65 @@ export class MergePanel {
 
     this.panel.webview.onDidReceiveMessage((msg) => {
       if (msg.type === "ready") {
+        this.resetHiddenRefs();
         void this.sendLocations();
         void this.sendCommits();
         this.sendPinnedRefs();
         this.watchRepo();
+      } else if (msg.type === "webviewLog") {
+        const level = typeof msg.level === "string" ? msg.level : "info";
+        const message = typeof msg.message === "string" ? msg.message : "(no-message)";
+        let dataSuffix = "";
+        if (msg.data !== undefined) {
+          try {
+            dataSuffix = ` data=${JSON.stringify(msg.data)}`;
+          } catch {
+            dataSuffix = " data=[unserializable]";
+          }
+        }
+        const line = `webview:${message}${dataSuffix}`;
+        if (level === "error") log.error(line);
+        else if (level === "warn") log.warn(line);
+        else log.info(line);
       } else if (msg.type === "action") {
         void this.handleAction(msg.action, msg.context);
       } else if (msg.type === "selectCommit") {
         void this.sendCommitDetail(msg.hash);
+      } else if (msg.type === "setHideConfig") {
+        const categories =
+          msg.hide?.categories && typeof msg.hide.categories === "object"
+            ? msg.hide.categories
+            : {};
+        this.hideConfig = {
+          categories: {
+            branches: Boolean(categories.branches),
+            remotes: Boolean(categories.remotes),
+            remoteCategories:
+              categories.remoteCategories && typeof categories.remoteCategories === "object"
+                ? (categories.remoteCategories as Record<string, boolean>)
+                : {},
+            tags: Boolean(categories.tags),
+            stashes: Boolean(categories.stashes),
+          },
+          targets: Array.isArray(msg.hide?.targets)
+            ? msg.hide.targets.filter((v: unknown): v is string => typeof v === "string")
+            : [],
+        };
+        void this.sendCommits();
       } else if (msg.type === "setHiddenRefs") {
-        this.hiddenRefs = msg.refs;
+        // Backward compatibility: old webview sends explicit refs list
+        this.hideConfig = {
+          categories: {
+            branches: false,
+            remotes: false,
+            remoteCategories: {},
+            tags: false,
+            stashes: false,
+          },
+          targets: Array.isArray(msg.refs)
+            ? msg.refs.filter((v: unknown): v is string => typeof v === "string")
+            : [],
+        };
         void this.sendCommits();
       } else if (msg.type === "setPinnedRefs") {
         this.savePinnedRefs(msg.pinned);
@@ -97,6 +168,53 @@ export class MergePanel {
         void this.sendCommits();
       }),
     );
+  }
+
+  private resetHiddenRefs() {
+    this.hideConfig = {
+      categories: {
+        branches: false,
+        remotes: false,
+        remoteCategories: {},
+        tags: false,
+        stashes: false,
+      },
+      targets: [],
+    };
+    this.panel.webview.postMessage({ type: "resetHiddenRefs" });
+  }
+
+  private static normalizeTargetPattern(raw: string): string | undefined {
+    const t = raw.trim();
+    if (!t) return undefined;
+    const toGitPattern = (ref: string): string => (ref.endsWith("/") ? `${ref}*` : ref);
+    // Allow direct full refs
+    if (t.startsWith("refs/")) return toGitPattern(t);
+    if (t.startsWith("branch:")) return toGitPattern(`refs/heads/${t.slice("branch:".length)}`);
+    if (t.startsWith("branches:")) return toGitPattern(`refs/heads/${t.slice("branches:".length)}`);
+    if (t.startsWith("remote:")) return toGitPattern(`refs/remotes/${t.slice("remote:".length)}`);
+    if (t.startsWith("remotes:")) return toGitPattern(`refs/remotes/${t.slice("remotes:".length)}`);
+    if (t.startsWith("tag:")) return toGitPattern(`refs/tags/${t.slice("tag:".length)}`);
+    if (t.startsWith("tags:")) return toGitPattern(`refs/tags/${t.slice("tags:".length)}`);
+    return toGitPattern(`refs/heads/${t}`);
+  }
+
+  private buildExcludeRefs(): string[] {
+    const refs = new Set<string>();
+    const categories = this.hideConfig.categories;
+
+    if (categories.branches) refs.add("refs/heads/*");
+    if (categories.remotes) refs.add("refs/remotes/*");
+    if (categories.tags) refs.add("refs/tags/*");
+
+    for (const [remoteName, hidden] of Object.entries(categories.remoteCategories)) {
+      if (hidden) refs.add(`refs/remotes/${remoteName}/*`);
+    }
+    for (const target of this.hideConfig.targets) {
+      const normalized = MergePanel.normalizeTargetPattern(target);
+      if (normalized) refs.add(normalized);
+    }
+    return [...refs];
   }
 
   private async git(...args: string[]): Promise<string> {
@@ -240,10 +358,14 @@ export class MergePanel {
   private async sendCommits() {
     if (!this.repo) return;
     try {
-      const excludeArgs = this.hiddenRefs.flatMap((r) => ["--exclude", r]);
+      const excludeRefs = this.buildExcludeRefs();
+      const excludeArgs = excludeRefs.flatMap((r) => ["--exclude", r]);
       // Include stash commits in the graph
-      const stashHashes = await this.gitLines("stash", "list", "--format=%H").catch(
-        () => [] as string[],
+      const stashHashes = this.hideConfig.categories.stashes
+        ? []
+        : await this.gitLines("stash", "list", "--format=%H").catch(() => [] as string[]);
+      log.info(
+        `sendCommits:start repo=${this.repo.rootUri.fsPath} excludeRefs=${excludeRefs.length} stashes=${stashHashes.length}`,
       );
 
       // Check for uncommitted changes
@@ -265,6 +387,9 @@ export class MergePanel {
         "--topo-order",
         "--max-count=200",
         "--format=%H\t%P\t%s\t%an\t%ar\t%D",
+      );
+      log.info(
+        `sendCommits:gitLog rows=${lines.length} hasUncommitted=${hasUncommitted} head=${headHash || "(none)"}`,
       );
       const stashSet = new Set(stashHashes);
       const commits: {
@@ -303,9 +428,40 @@ export class MergePanel {
           isStash: stashSet.has(hash!) || undefined,
         });
       }
-      this.panel.webview.postMessage({ type: "commits", commits });
+
+      const stashInternalHashes = new Set<string>();
+      for (const c of commits) {
+        if (c.isStash) {
+          for (let i = 1; i < c.parents.length; i++) {
+            stashInternalHashes.add(c.parents[i]!);
+          }
+        }
+      }
+      const filtered =
+        stashInternalHashes.size > 0
+          ? commits.filter((c) => !stashInternalHashes.has(c.hash))
+          : commits;
+      log.info(
+        `sendCommits:result total=${commits.length} filtered=${filtered.length} stashInternal=${stashInternalHashes.size}`,
+      );
+      if (filtered.length === 0) {
+        log.warn(
+          `sendCommits:empty commits after filtering (excludeRefs=${excludeRefs.length}, gitRows=${lines.length}, stashes=${stashHashes.length})`,
+        );
+      }
+
+      const payload = { type: "commits", commits: filtered };
+      const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+      const posted = await this.panel.webview.postMessage(payload);
+      log.info(
+        `sendCommits:postMessage ok=${posted} bytes=${payloadBytes} commits=${filtered.length}`,
+      );
+      if (!posted) {
+        log.warn("sendCommits:postMessage returned false");
+      }
     } catch (err) {
-      log.error(`sendCommits failed: ${err}`);
+      const message = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
+      log.error(`sendCommits failed: ${message}`);
     }
   }
 

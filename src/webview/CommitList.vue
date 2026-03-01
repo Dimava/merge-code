@@ -68,6 +68,14 @@ const COL_W = 12;
 const DOT_R = 4;
 const LINE_W = 1.5;
 
+function emitDiag(message: string, data?: unknown, level: "info" | "warn" | "error" = "info") {
+  window.dispatchEvent(
+    new CustomEvent("mergeCode:webviewLog", {
+      detail: { source: "commit-list", message, data, level },
+    }),
+  );
+}
+
 watch(
   () => props.focusHash,
   async (hash) => {
@@ -78,6 +86,7 @@ watch(
   },
 );
 
+// See docs/graph-layout-rules.md for the full set of rules.
 const graphRows = computed(() => {
   const commits = props.commits;
   const rows: GraphRow[] = [];
@@ -94,6 +103,14 @@ const graphRows = computed(() => {
     return activeLanes.length - 1;
   }
 
+  function rightmostFreeOrAppend(): number {
+    for (let i = activeLanes.length - 1; i >= 0; i--) {
+      if (activeLanes[i] === null) return i;
+    }
+    activeLanes.push(null);
+    return activeLanes.length - 1;
+  }
+
   for (const commit of commits) {
     const isMerge = commit.parents.length > 1;
     const isStash = commit.isStash ?? false;
@@ -102,7 +119,7 @@ const graphRows = computed(() => {
     const wasTracked = col >= 0;
 
     if (col < 0) {
-      col = firstFreeOrAppend();
+      col = isStash ? rightmostFreeOrAppend() : firstFreeOrAppend();
       activeLanes[col] = commit.hash;
     }
 
@@ -122,10 +139,12 @@ const graphRows = computed(() => {
 
     const parentCount = isStash ? Math.min(commit.parents.length, 1) : commit.parents.length;
 
+    // First parent continues straight down in the same lane
     if (parentCount > 0) {
       const p0 = commit.parents[0]!;
       const existingLane = findLane(p0);
       if (existingLane >= 0 && existingLane !== col) {
+        // p0 already claimed by another child (fork point) — diagonal
         lanes[col]!.linesDown.push(existingLane);
       } else if (existingLane < 0) {
         activeLanes[col] = p0;
@@ -135,6 +154,7 @@ const graphRows = computed(() => {
       }
     }
 
+    // Merge parents fork to the right
     for (let pi = 1; pi < parentCount; pi++) {
       const p = commit.parents[pi]!;
       const existingLane = findLane(p);
@@ -156,6 +176,7 @@ const graphRows = computed(() => {
       }
     }
 
+    // Passthrough: active lanes continue straight down
     for (let i = 0; i < lanes.length; i++) {
       if (i !== col && activeLanes[i] != null && !lanes[i]!.linesDown.includes(i)) {
         lanes[i]!.linesDown.push(i);
@@ -202,6 +223,97 @@ function refLabel(ref: string): string {
 function refLaneColor(ref: string, row: GraphRow): string {
   return row.lanes[row.col]?.color ?? pickColor(row.col);
 }
+
+// --- Branch path highlighting on hover ---
+
+const hoveredHash = vueRef<string | null>(null);
+
+const firstParentMap = computed(() => {
+  const map = new Map<string, string>();
+  for (const c of props.commits) {
+    if (c.parents.length > 0) map.set(c.hash, c.parents[0]!);
+  }
+  return map;
+});
+
+const firstParentChildMap = computed(() => {
+  const map = new Map<string, string[]>();
+  for (const c of props.commits) {
+    if (c.parents.length > 0) {
+      const p0 = c.parents[0]!;
+      const arr = map.get(p0);
+      if (arr) arr.push(c.hash);
+      else map.set(p0, [c.hash]);
+    }
+  }
+  return map;
+});
+
+const highlightedHashes = computed<Set<string>>(() => {
+  const hash = hoveredHash.value;
+  if (!hash) return new Set();
+
+  const result = new Set<string>();
+  result.add(hash);
+
+  // Walk down (ancestors) via first-parent
+  let cur = hash;
+  while (true) {
+    const parent = firstParentMap.value.get(cur);
+    if (!parent || result.has(parent)) break;
+    result.add(parent);
+    cur = parent;
+  }
+
+  // Walk up (descendants) via first-parent-child links
+  const queue = [hash];
+  while (queue.length > 0) {
+    const h = queue.pop()!;
+    const children = firstParentChildMap.value.get(h);
+    if (!children) continue;
+    for (const child of children) {
+      if (!result.has(child)) {
+        result.add(child);
+        queue.push(child);
+      }
+    }
+  }
+
+  return result;
+});
+
+const isHighlighting = computed(() => hoveredHash.value != null);
+
+watch(
+  () => props.commits.length,
+  async (next, prev) => {
+    if (next === 0 || prev === 0) {
+      emitDiag("props-commits-length", { prev, next });
+    }
+    await nextTick();
+    const el = scrollContainer.value;
+    if (!el) {
+      emitDiag("viewport-missing", undefined, "warn");
+      return;
+    }
+    emitDiag("viewport", {
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight,
+      rowCount: el.querySelectorAll(".commit-row").length,
+      graphRows: graphRows.value.length,
+      graphWidth: graphWidth.value,
+    });
+  },
+);
+
+watch(
+  () => graphRows.value.length,
+  (next, prev) => {
+    if (next === 0 || prev === 0) {
+      emitDiag("graph-rows-length", { prev, next });
+    }
+  },
+);
 </script>
 
 <template>
@@ -215,8 +327,14 @@ function refLaneColor(ref: string, row: GraphRow): string {
         :key="row.commit.hash"
         :data-hash="row.commit.hash"
         class="commit-row"
-        :class="{ selected: row.commit.hash === selected, uncommitted: row.isUncommitted }"
+        :class="{
+          selected: row.commit.hash === selected,
+          uncommitted: row.isUncommitted,
+          dimmed: isHighlighting && !highlightedHashes.has(row.commit.hash),
+        }"
         @click="emit('select', row.commit.hash)"
+        @mouseenter="hoveredHash = row.commit.hash"
+        @mouseleave="hoveredHash = null"
       >
         <svg class="graph-svg" :width="graphWidth" :height="ROW_H">
           <!-- Dashed line dash pattern for uncommitted -->
@@ -371,6 +489,7 @@ function refLaneColor(ref: string, row: GraphRow): string {
   align-items: center;
   cursor: pointer;
   height: 40px;
+  transition: opacity 0.15s ease;
 }
 .commit-row:hover {
   background: var(--vscode-list-hoverBackground);
@@ -381,6 +500,9 @@ function refLaneColor(ref: string, row: GraphRow): string {
 }
 .commit-row.uncommitted {
   opacity: 0.85;
+}
+.commit-row.dimmed {
+  opacity: 0.3;
 }
 .graph-svg {
   flex-shrink: 0;

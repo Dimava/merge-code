@@ -20,10 +20,22 @@ const emit = defineEmits<{
 }>();
 
 const open = ref(props.defaultOpen);
+let eyeToggleQueued = false;
 
 function onEyeClick(e: MouseEvent) {
   e.stopPropagation();
-  emit("toggleEye");
+  // Defer to next microtask to avoid re-entrant update loops
+  // when parent handlers synchronously mutate reactive graph visibility state.
+  if (eyeToggleQueued) return;
+  eyeToggleQueued = true;
+  queueMicrotask(() => {
+    eyeToggleQueued = false;
+    emit("toggleEye");
+  });
+}
+
+function onHeaderClick() {
+  open.value = !open.value;
 }
 </script>
 
@@ -32,7 +44,7 @@ function onEyeClick(e: MouseEvent) {
     <div
       class="tree-header"
       :style="nested ? { paddingLeft: depth * 16 + 12 + 'px' } : undefined"
-      @click="open = !open"
+      @click="onHeaderClick"
     >
       <span class="chevron" :class="{ open }">&#9654;</span>
       <span class="label">{{ label }}</span>

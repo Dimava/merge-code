@@ -83,15 +83,33 @@ function childRefNames(folderKey: string): string[] {
     .map((r) => r.name);
 }
 
+function isPrefixPattern(pattern: string): boolean {
+  return pattern.endsWith("/");
+}
+
+function isNameHidden(name: string, set: Set<string>): boolean {
+  if (set.has(name)) return true;
+  for (const pattern of set) {
+    if (!isPrefixPattern(pattern)) continue;
+    if (name.startsWith(pattern)) return true;
+  }
+  return false;
+}
+
 function toggleEye(e: MouseEvent, key: string, isFolder: boolean) {
   e.stopPropagation();
   const s = new Set(hidden.value);
   if (isFolder) {
     const children = childRefNames(key);
-    const allHidden = children.length > 0 && children.every((n) => s.has(n));
-    for (const n of children) {
-      if (allHidden) s.delete(n);
-      else s.add(n);
+    const allHidden = children.length > 0 && children.every((n) => isNameHidden(n, s));
+    const folderPattern = `${key}/`;
+    if (allHidden) {
+      s.delete(folderPattern);
+      for (const n of children) s.delete(n);
+    } else {
+      // Prefer wildcard for folder-level hiding; clear redundant exact leaves.
+      s.add(folderPattern);
+      for (const n of children) s.delete(n);
     }
   } else {
     if (s.has(key)) s.delete(key);
@@ -102,7 +120,7 @@ function toggleEye(e: MouseEvent, key: string, isFolder: boolean) {
 
 function isFolderHidden(key: string): boolean {
   const children = childRefNames(key);
-  return children.length > 0 && children.every((n) => hidden.value.has(n));
+  return children.length > 0 && children.every((n) => isNameHidden(n, hidden.value));
 }
 
 function togglePin(e: MouseEvent, key: string) {
@@ -214,7 +232,9 @@ const rows = computed(() => {
         <span
           class="eye"
           :class="{
-            off: row.isFolder ? isFolderHidden(row.key) : hidden.has(row.entry?.name ?? row.key),
+            off: row.isFolder
+              ? isFolderHidden(row.key)
+              : isNameHidden(row.entry?.name ?? row.key, hidden),
           }"
           @click.stop="
             toggleEye($event, row.isFolder ? row.key : (row.entry?.name ?? row.key), row.isFolder)

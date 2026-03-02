@@ -220,7 +220,8 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
 
       <template #panel-1>
         <CommitList
-          :commits="commits.list"
+          :graph-rows="commits.graphRows"
+          :graph-width="commits.graphWidth"
           :selected="commits.selectedHash"
           :focus-hash="commits.focusHash"
           :head="locations.head"

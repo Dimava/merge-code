@@ -1,13 +1,20 @@
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { defineStore } from "pinia";
 import { post, webviewLog } from "./bridge";
+import { computeGraphRows, computeGraphWidth } from "../graph-layout";
 import type { CommitEntry, CommitDetailData, CommitsMessage, CommitDetailMessage } from "../types";
+import type { GraphRow } from "../graph-layout";
+
+const COL_W = 12;
 
 export const useCommitsStore = defineStore("commits", () => {
   const list = ref<CommitEntry[]>([]);
   const selectedHash = ref<string>();
   const detail = ref<CommitDetailData>();
   const focusHash = ref<string>();
+
+  const graphRows = computed<GraphRow[]>(() => computeGraphRows(list.value));
+  const graphWidth = computed(() => computeGraphWidth(graphRows.value, COL_W));
 
   function handleCommits(msg: CommitsMessage) {
     const isArray = Array.isArray(msg.commits);
@@ -46,6 +53,8 @@ export const useCommitsStore = defineStore("commits", () => {
     selectedHash,
     detail,
     focusHash,
+    graphRows,
+    graphWidth,
     handleCommits,
     handleCommitDetail,
     select,

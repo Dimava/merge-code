@@ -475,8 +475,8 @@ export class MergePanel {
           "--format=%H\t%T\t%P\t%an\t%ae\t%aI\t%cn\t%ce\t%cI\t%D\t%B",
           hash,
         ),
-        this.git("diff-tree", "--no-commit-id", "-r", "--numstat", hash),
-        this.git("diff-tree", "--no-commit-id", "-p", "-U3", hash),
+        this.git("diff-tree", "--no-commit-id", "-r", "--numstat", "-m", "--first-parent", hash),
+        this.git("diff-tree", "--no-commit-id", "-p", "-U3", "-m", "--first-parent", hash),
       ]);
       const parts = info.split("\t");
       const fullHash = parts[0]!;

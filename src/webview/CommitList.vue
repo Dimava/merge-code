@@ -1,57 +1,11 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref as vueRef } from "vue";
-
-export interface CommitEntry {
-  hash: string;
-  parents: string[];
-  subject: string;
-  author: string;
-  date: string;
-  refs: string[];
-  isStash?: boolean;
-  isUncommitted?: boolean;
-}
-
-interface GraphRow {
-  commit: CommitEntry;
-  col: number;
-  lanes: LaneCell[];
-  isMerge: boolean;
-  isStash: boolean;
-  isUncommitted: boolean;
-}
-
-interface LaneCell {
-  type: "empty" | "commit" | "pass";
-  color: string;
-  linesUp: number[];
-  linesDown: number[];
-}
-
-const COLORS = [
-  "#6bc5f8",
-  "#e78a4e",
-  "#a9dc76",
-  "#fc6d7b",
-  "#ab9df2",
-  "#ffd866",
-  "#78dce8",
-  "#ff6188",
-  "#a6e22e",
-  "#ae81ff",
-  "#f4bf75",
-  "#66d9ef",
-  "#e06c75",
-  "#98c379",
-  "#c678dd",
-];
-
-function pickColor(col: number): string {
-  return COLORS[col % COLORS.length]!;
-}
+import { pickColor } from "./v2/graph-layout";
+import type { GraphRow } from "./v2/graph-layout";
 
 const props = defineProps<{
-  commits: CommitEntry[];
+  graphRows: GraphRow[];
+  graphWidth: number;
   selected?: string;
   focusHash?: string;
   head?: string;
@@ -86,121 +40,6 @@ watch(
   },
 );
 
-// See docs/graph-layout-rules.md for the full set of rules.
-const graphRows = computed(() => {
-  const commits = props.commits;
-  const rows: GraphRow[] = [];
-  const activeLanes: (string | null)[] = [];
-
-  function findLane(hash: string): number {
-    return activeLanes.indexOf(hash);
-  }
-
-  function firstFreeOrAppend(): number {
-    const idx = activeLanes.indexOf(null);
-    if (idx >= 0) return idx;
-    activeLanes.push(null);
-    return activeLanes.length - 1;
-  }
-
-  function rightmostFreeOrAppend(): number {
-    for (let i = activeLanes.length - 1; i >= 0; i--) {
-      if (activeLanes[i] === null) return i;
-    }
-    activeLanes.push(null);
-    return activeLanes.length - 1;
-  }
-
-  for (const commit of commits) {
-    const isMerge = commit.parents.length > 1;
-    const isStash = commit.isStash ?? false;
-    const isUncommitted = commit.isUncommitted ?? false;
-    let col = findLane(commit.hash);
-    const wasTracked = col >= 0;
-
-    if (col < 0) {
-      col = isStash ? rightmostFreeOrAppend() : firstFreeOrAppend();
-      activeLanes[col] = commit.hash;
-    }
-
-    const laneCount = Math.max(activeLanes.length, col + 1);
-    const lanes: LaneCell[] = [];
-    for (let i = 0; i < laneCount; i++) {
-      const hasLineUp = i === col ? wasTracked : activeLanes[i] != null;
-      lanes.push({
-        type: i === col ? "commit" : activeLanes[i] != null ? "pass" : "empty",
-        color: pickColor(i),
-        linesUp: hasLineUp ? [i] : [],
-        linesDown: [],
-      });
-    }
-
-    activeLanes[col] = null;
-
-    const parentCount = isStash ? Math.min(commit.parents.length, 1) : commit.parents.length;
-
-    // First parent continues straight down in the same lane
-    if (parentCount > 0) {
-      const p0 = commit.parents[0]!;
-      const existingLane = findLane(p0);
-      if (existingLane >= 0 && existingLane !== col) {
-        // p0 already claimed by another child (fork point) — diagonal
-        lanes[col]!.linesDown.push(existingLane);
-      } else if (existingLane < 0) {
-        activeLanes[col] = p0;
-        lanes[col]!.linesDown.push(col);
-      } else {
-        lanes[col]!.linesDown.push(col);
-      }
-    }
-
-    // Merge parents fork to the right
-    for (let pi = 1; pi < parentCount; pi++) {
-      const p = commit.parents[pi]!;
-      const existingLane = findLane(p);
-      if (existingLane >= 0) {
-        lanes[col]!.linesDown.push(existingLane);
-      } else {
-        const newLane = firstFreeOrAppend();
-        activeLanes[newLane] = p;
-        while (lanes.length <= newLane) {
-          lanes.push({
-            type: "empty",
-            color: pickColor(lanes.length),
-            linesUp: [],
-            linesDown: [],
-          });
-        }
-        lanes[col]!.linesDown.push(newLane);
-        lanes[newLane]!.linesDown.push(newLane);
-      }
-    }
-
-    // Passthrough: active lanes continue straight down
-    for (let i = 0; i < lanes.length; i++) {
-      if (i !== col && activeLanes[i] != null && !lanes[i]!.linesDown.includes(i)) {
-        lanes[i]!.linesDown.push(i);
-      }
-    }
-
-    while (activeLanes.length > 0 && activeLanes[activeLanes.length - 1] === null) {
-      activeLanes.pop();
-    }
-
-    rows.push({ commit, col, lanes, isMerge, isStash, isUncommitted });
-  }
-
-  return rows;
-});
-
-const graphWidth = computed(() => {
-  let max = 1;
-  for (const row of graphRows.value) {
-    if (row.lanes.length > max) max = row.lanes.length;
-  }
-  return max * COL_W + 8;
-});
-
 function laneX(lane: number): number {
   return lane * COL_W + COL_W / 2 + 2;
 }
@@ -219,7 +58,6 @@ function refLabel(ref: string): string {
   return ref;
 }
 
-// Get lane color for a branch ref badge
 function refLaneColor(ref: string, row: GraphRow): string {
   return row.lanes[row.col]?.color ?? pickColor(row.col);
 }
@@ -230,7 +68,8 @@ const hoveredHash = vueRef<string | null>(null);
 
 const firstParentMap = computed(() => {
   const map = new Map<string, string>();
-  for (const c of props.commits) {
+  for (const row of props.graphRows) {
+    const c = row.commit;
     if (c.parents.length > 0) map.set(c.hash, c.parents[0]!);
   }
   return map;
@@ -238,7 +77,8 @@ const firstParentMap = computed(() => {
 
 const firstParentChildMap = computed(() => {
   const map = new Map<string, string[]>();
-  for (const c of props.commits) {
+  for (const row of props.graphRows) {
+    const c = row.commit;
     if (c.parents.length > 0) {
       const p0 = c.parents[0]!;
       const arr = map.get(p0);
@@ -256,7 +96,6 @@ const highlightedHashes = computed<Set<string>>(() => {
   const result = new Set<string>();
   result.add(hash);
 
-  // Walk down (ancestors) via first-parent
   let cur = hash;
   while (true) {
     const parent = firstParentMap.value.get(cur);
@@ -265,7 +104,6 @@ const highlightedHashes = computed<Set<string>>(() => {
     cur = parent;
   }
 
-  // Walk up (descendants) via first-parent-child links
   const queue = [hash];
   while (queue.length > 0) {
     const h = queue.pop()!;
@@ -285,10 +123,10 @@ const highlightedHashes = computed<Set<string>>(() => {
 const isHighlighting = computed(() => hoveredHash.value != null);
 
 watch(
-  () => props.commits.length,
+  () => props.graphRows.length,
   async (next, prev) => {
     if (next === 0 || prev === 0) {
-      emitDiag("props-commits-length", { prev, next });
+      emitDiag("graph-rows-length", { prev, next });
     }
     await nextTick();
     const el = scrollContainer.value;
@@ -300,18 +138,9 @@ watch(
       clientHeight: el.clientHeight,
       scrollHeight: el.scrollHeight,
       rowCount: el.querySelectorAll(".commit-row").length,
-      graphRows: graphRows.value.length,
-      graphWidth: graphWidth.value,
+      graphRows: props.graphRows.length,
+      graphWidth: props.graphWidth,
     });
-  },
-);
-
-watch(
-  () => graphRows.value.length,
-  (next, prev) => {
-    if (next === 0 || prev === 0) {
-      emitDiag("graph-rows-length", { prev, next });
-    }
   },
 );
 </script>
@@ -337,10 +166,24 @@ watch(
         @mouseleave="hoveredHash = null"
       >
         <svg class="graph-svg" :width="graphWidth" :height="ROW_H">
-          <!-- Dashed line dash pattern for uncommitted -->
           <defs v-if="row.isUncommitted">
             <line id="unused" x1="0" y1="0" x2="0" y2="0" />
           </defs>
+
+          <!-- Curves from commit to different lanes (drawn first, behind verticals) -->
+          <template
+            v-for="(targetLane, li) in row.lanes[row.col]?.linesDown ?? []"
+            :key="'curve-' + li"
+          >
+            <path
+              v-if="targetLane !== row.col"
+              :d="`M${laneX(row.col)},${ROW_H / 2} C${laneX(targetLane)},${ROW_H / 2} ${laneX(targetLane)},${ROW_H / 2} ${laneX(targetLane)},${ROW_H}`"
+              :stroke="pickColor(targetLane)"
+              :stroke-width="LINE_W"
+              fill="none"
+              :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
+            />
+          </template>
 
           <!-- Passthrough vertical lines -->
           <template v-for="(cell, ci) in row.lanes" :key="'pass-' + ci">
@@ -356,7 +199,7 @@ watch(
             />
           </template>
 
-          <!-- Lines down from commit -->
+          <!-- Straight line down from commit -->
           <template
             v-for="(targetLane, li) in row.lanes[row.col]?.linesDown ?? []"
             :key="'down-' + li"
@@ -369,14 +212,6 @@ watch(
               :y2="ROW_H"
               :stroke="row.lanes[row.col]?.color"
               :stroke-width="LINE_W"
-              :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
-            />
-            <path
-              v-else
-              :d="`M${laneX(row.col)},${ROW_H / 2} C${laneX(row.col)},${ROW_H} ${laneX(targetLane)},${ROW_H / 2} ${laneX(targetLane)},${ROW_H}`"
-              :stroke="pickColor(targetLane)"
-              :stroke-width="LINE_W"
-              fill="none"
               :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
             />
           </template>
@@ -396,8 +231,13 @@ watch(
           </template>
 
           <!-- Commit dot -->
+          <polygon
+            v-if="row.isRoot"
+            :points="`${laneX(row.col)},${ROW_H / 2 + DOT_R + 1} ${laneX(row.col) - DOT_R - 1},${ROW_H / 2 - DOT_R} ${laneX(row.col) + DOT_R + 1},${ROW_H / 2 - DOT_R}`"
+            :fill="row.lanes[row.col]?.color"
+          />
           <rect
-            v-if="row.isMerge || row.isStash || row.isUncommitted"
+            v-else-if="row.isMerge || row.isStash || row.isUncommitted"
             :x="laneX(row.col) - DOT_R"
             :y="ROW_H / 2 - DOT_R"
             :width="DOT_R * 2"
@@ -452,7 +292,7 @@ watch(
           </div>
         </div>
       </div>
-      <div v-if="commits.length === 0" class="empty">No commits</div>
+      <div v-if="graphRows.length === 0" class="empty">No commits</div>
     </div>
   </div>
 </template>

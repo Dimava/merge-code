@@ -83,12 +83,12 @@ export function computeGraphRows(commits: CommitEntry[]): GraphRow[] {
     }
   }
 
-	function stashLane(from: number, to: number): number {
-		// Stashes prefer lane 1 (just right of the trunk), then 2, 3, ...
-		for (let l = 1; ; l++) {
-			if (laneIsFree(l, from, to)) return l;
-		}
-	}
+  function stashLane(from: number, to: number): number {
+    // Stashes prefer lane 1 (just right of the trunk), then 2, 3, ...
+    for (let l = 1; ; l++) {
+      if (laneIsFree(l, from, to)) return l;
+    }
+  }
 
   // Walk first-parent chains starting from unvisited commits (in topo order).
   // HEAD chain goes first (index 0), so it gets lane 0.
@@ -115,15 +115,25 @@ export function computeGraphRows(commits: CommitEntry[]): GraphRow[] {
     const fromRow = startIdx;
     const lastHash = chain[chain.length - 1]!;
     const lastIdx = indexByHash.get(lastHash)!;
-    const toRow = lastIdx + 1;
 
-		const isStashChain = startCommit.isStash ?? false;
-		let lane: number;
-		if (isStashChain) {
-			lane = stashLane(fromRow, toRow);
-		} else {
-			lane = firstFreeLane(fromRow, toRow);
-		}
+    // Keep the lane occupied through the chain tail's first-parent target row
+    // so branch connectors don't collide with subsequently allocated spans.
+    let toRow = lastIdx + 1;
+    const tailParentHash = commits[lastIdx]!.parents[0];
+    if (tailParentHash !== undefined) {
+      const tailParentIdx = indexByHash.get(tailParentHash);
+      if (tailParentIdx !== undefined) {
+        toRow = Math.max(toRow, tailParentIdx + 1);
+      }
+    }
+
+    const isStashChain = startCommit.isStash ?? false;
+    let lane: number;
+    if (isStashChain) {
+      lane = stashLane(fromRow, toRow);
+    } else {
+      lane = firstFreeLane(fromRow, toRow);
+    }
 
     occupyLane(lane, fromRow, toRow);
     const hashes = new Set(chain);
@@ -173,10 +183,8 @@ export function computeGraphRows(commits: CommitEntry[]): GraphRow[] {
       }
       const isCommitLane = l === col;
 
-		// linesUp: same span must cover both this row and the row above
-		const hasUp = isCommitLane
-			? sameSpanCovers(l, ri, ri - 1)
-			: sameSpanCovers(l, ri, ri - 1);
+      // linesUp: same span must cover both this row and the row above
+      const hasUp = isCommitLane ? sameSpanCovers(l, ri, ri - 1) : sameSpanCovers(l, ri, ri - 1);
 
       lanes.push({
         type: isCommitLane ? "commit" : isActive ? "pass" : "empty",
@@ -201,38 +209,38 @@ export function computeGraphRows(commits: CommitEntry[]): GraphRow[] {
       }
     }
 
-	// Passthrough linesDown: only if same span continues to next row
-		for (let l = 0; l < laneCount; l++) {
-			if (l === col) continue;
-			if (lanes[l]!.type === "pass" && sameSpanCovers(l, ri, ri + 1)) {
-				if (!lanes[l]!.linesDown.includes(l)) {
-					lanes[l]!.linesDown.push(l);
-				}
-			}
-		}
+    // Passthrough linesDown: only if same span continues to next row
+    for (let l = 0; l < laneCount; l++) {
+      if (l === col) continue;
+      if (lanes[l]!.type === "pass" && sameSpanCovers(l, ri, ri + 1)) {
+        if (!lanes[l]!.linesDown.includes(l)) {
+          lanes[l]!.linesDown.push(l);
+        }
+      }
+    }
 
     const isRoot = !isUncommitted && lanes[col]!.linesDown.length === 0;
     rows.push({ commit, col, lanes, isMerge, isStash, isUncommitted, isRoot });
   }
 
-	function spanAt(lane: number, row: number): BranchSpan | undefined {
-		if (row < 0) return undefined;
-		for (const span of spans) {
-			if (span.lane === lane && row >= span.fromRow && row < span.toRow) {
-				return span;
-			}
-		}
-		return undefined;
-	}
+  function spanAt(lane: number, row: number): BranchSpan | undefined {
+    if (row < 0) return undefined;
+    for (const span of spans) {
+      if (span.lane === lane && row >= span.fromRow && row < span.toRow) {
+        return span;
+      }
+    }
+    return undefined;
+  }
 
-	function isLaneActiveAt(lane: number, row: number): boolean {
-		return spanAt(lane, row) !== undefined;
-	}
+  function isLaneActiveAt(lane: number, row: number): boolean {
+    return spanAt(lane, row) !== undefined;
+  }
 
-	function sameSpanCovers(lane: number, rowA: number, rowB: number): boolean {
-		const s = spanAt(lane, rowA);
-		return s !== undefined && rowB >= s.fromRow && rowB < s.toRow;
-	}
+  function sameSpanCovers(lane: number, rowA: number, rowB: number): boolean {
+    const s = spanAt(lane, rowA);
+    return s !== undefined && rowB >= s.fromRow && rowB < s.toRow;
+  }
 
   return rows;
 }

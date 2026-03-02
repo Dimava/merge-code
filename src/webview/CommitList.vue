@@ -2,6 +2,7 @@
 import { computed, watch, nextTick, ref as vueRef } from "vue";
 import { pickColor } from "./v2/graph-layout";
 import type { GraphRow } from "./v2/graph-layout";
+import CommitGraphSvg from "./CommitGraphSvg.vue";
 
 const props = defineProps<{
   graphRows: GraphRow[];
@@ -16,11 +17,6 @@ const emit = defineEmits<{
 }>();
 
 const scrollContainer = vueRef<HTMLElement>();
-
-const ROW_H = 40;
-const COL_W = 12;
-const DOT_R = 4;
-const LINE_W = 1.5;
 
 function emitDiag(message: string, data?: unknown, level: "info" | "warn" | "error" = "info") {
   window.dispatchEvent(
@@ -39,10 +35,6 @@ watch(
     if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
   },
 );
-
-function laneX(lane: number): number {
-  return lane * COL_W + COL_W / 2 + 2;
-}
 
 function isTag(ref: string): boolean {
   return ref.startsWith("tag: ");
@@ -152,7 +144,7 @@ watch(
     </div>
     <div ref="scrollContainer" class="commits-scroll">
       <div
-        v-for="row in graphRows"
+        v-for="(row, ri) in graphRows"
         :key="row.commit.hash"
         :data-hash="row.commit.hash"
         class="commit-row"
@@ -165,106 +157,17 @@ watch(
         @mouseenter="hoveredHash = row.commit.hash"
         @mouseleave="hoveredHash = null"
       >
-        <svg class="graph-svg" :width="graphWidth" :height="ROW_H">
-          <defs v-if="row.isUncommitted">
-            <line id="unused" x1="0" y1="0" x2="0" y2="0" />
-          </defs>
-
-          <!-- Curves from commit to different lanes (drawn first, behind verticals) -->
-          <template
-            v-for="(targetLane, li) in row.lanes[row.col]?.linesDown ?? []"
-            :key="'curve-' + li"
-          >
-            <path
-              v-if="targetLane !== row.col"
-              :d="`M${laneX(row.col)},${ROW_H / 2} C${laneX(targetLane)},${ROW_H / 2} ${laneX(targetLane)},${ROW_H / 2} ${laneX(targetLane)},${ROW_H}`"
-              :stroke="pickColor(targetLane)"
-              :stroke-width="LINE_W"
-              fill="none"
-              :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
-            />
-          </template>
-
-          <!-- Passthrough vertical lines -->
-          <template v-for="(cell, ci) in row.lanes" :key="'pass-' + ci">
-            <line
-              v-if="cell.type === 'pass'"
-              :x1="laneX(ci)"
-              :y1="0"
-              :x2="laneX(ci)"
-              :y2="ROW_H"
-              :stroke="cell.color"
-              :stroke-width="LINE_W"
-              :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
-            />
-          </template>
-
-          <!-- Straight line down from commit -->
-          <template
-            v-for="(targetLane, li) in row.lanes[row.col]?.linesDown ?? []"
-            :key="'down-' + li"
-          >
-            <line
-              v-if="targetLane === row.col"
-              :x1="laneX(row.col)"
-              :y1="ROW_H / 2"
-              :x2="laneX(row.col)"
-              :y2="ROW_H"
-              :stroke="row.lanes[row.col]?.color"
-              :stroke-width="LINE_W"
-              :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
-            />
-          </template>
-
-          <!-- Lines up to commit -->
-          <template v-for="(cell, ci) in row.lanes" :key="'up-' + ci">
-            <line
-              v-if="ci === row.col && cell.linesUp.includes(ci)"
-              :x1="laneX(ci)"
-              :y1="0"
-              :x2="laneX(ci)"
-              :y2="ROW_H / 2"
-              :stroke="cell.color"
-              :stroke-width="LINE_W"
-              :stroke-dasharray="row.isUncommitted ? '3,3' : undefined"
-            />
-          </template>
-
-          <!-- Commit dot -->
-          <polygon
-            v-if="row.isRoot"
-            :points="`${laneX(row.col)},${ROW_H / 2 + DOT_R + 1} ${laneX(row.col) - DOT_R - 1},${ROW_H / 2 - DOT_R} ${laneX(row.col) + DOT_R + 1},${ROW_H / 2 - DOT_R}`"
-            :fill="row.lanes[row.col]?.color"
-          />
-          <rect
-            v-else-if="row.isMerge || row.isStash || row.isUncommitted"
-            :x="laneX(row.col) - DOT_R"
-            :y="ROW_H / 2 - DOT_R"
-            :width="DOT_R * 2"
-            :height="DOT_R * 2"
-            :stroke="row.lanes[row.col]?.color"
-            :stroke-width="LINE_W"
-            fill="var(--vscode-editor-background, #1e1e1e)"
-            rx="1"
-            :stroke-dasharray="row.isUncommitted ? '2,2' : undefined"
-          />
-          <rect
-            v-else
-            :x="laneX(row.col) - DOT_R"
-            :y="ROW_H / 2 - DOT_R"
-            :width="DOT_R * 2"
-            :height="DOT_R * 2"
-            :fill="row.lanes[row.col]?.color"
-            rx="1"
-          />
-        </svg>
+        <CommitGraphSvg class="graph-svg" :graph-rows="graphRows" :graph-width="graphWidth" :row="row" :ri="ri" />
 
         <div class="commit-content">
           <div class="commit-line1">
             <span class="subject" :class="{ 'uncommitted-text': row.isUncommitted }">{{
               row.commit.subject
             }}</span>
-            <span v-if="row.commit.refs.length" class="refs">
+          </div>
+          <div class="commit-line2">
+            <span class="author">{{ row.commit.author }}</span>
+            <span v-if="!row.isUncommitted && row.commit.refs.length" class="refs">
               <span
                 v-for="r in row.commit.refs"
                 :key="r"
@@ -285,10 +188,6 @@ watch(
                 >{{ refLabel(r) }}</span
               >
             </span>
-          </div>
-          <div v-if="!row.isUncommitted" class="commit-line2">
-            <span class="author">{{ row.commit.author }}</span>
-            <span class="date">{{ row.commit.date }}</span>
           </div>
         </div>
       </div>
@@ -329,6 +228,7 @@ watch(
   align-items: center;
   cursor: pointer;
   height: 40px;
+  overflow: visible;
   transition: opacity 0.15s ease;
 }
 .commit-row:hover {
@@ -338,15 +238,11 @@ watch(
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
-.commit-row.uncommitted {
-  opacity: 0.85;
-}
 .commit-row.dimmed .commit-content {
-  opacity: 0.3;
+  opacity: 0.5;
 }
-.graph-svg {
-  flex-shrink: 0;
-  align-self: stretch;
+.commit-row.dimmed .graph-svg {
+  opacity: 0.5;
 }
 .commit-content {
   flex: 1;
@@ -419,11 +315,6 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.date {
-  flex-shrink: 0;
-  white-space: nowrap;
-  margin-left: 8px;
 }
 .empty {
   padding: 16px;

@@ -144,7 +144,7 @@ const plugin: BunPlugin = {
 
       return {
         contents: template.code,
-        loader: "js",
+        loader: script.lang === "ts" ? "ts" : "js",
       };
     });
 

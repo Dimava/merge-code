@@ -44,6 +44,13 @@ export interface FileChange {
   path: string;
   added: number;
   deleted: number;
+  mode: string;
+  content?: string;
+  hunks?: {
+    combined?: DiffHunk[];
+    staged?: DiffHunk[];
+    unstaged?: DiffHunk[];
+  };
 }
 
 export interface DiffLine {
@@ -72,7 +79,11 @@ export interface CommitDetailData {
   refs: string[];
   body: string;
   files: FileChange[];
-  fileDiffs: Record<string, { hunks: DiffHunk[] }>;
+  workingTreeChanges?: {
+    staged: FileChange[];
+    unstaged: FileChange[];
+    untracked: FileChange[];
+  };
 }
 
 export interface PinnedRefs {

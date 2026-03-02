@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { promises as fs } from "fs";
+import * as path from "path";
 import type { Repository } from "./git";
 import { log } from "./extension";
 
@@ -38,6 +40,7 @@ export class MergePanel {
     },
     targets: [],
   };
+  private stashRefByHash = new Map<string, string>();
   private context: vscode.ExtensionContext;
 
   static open(context: vscode.ExtensionContext, repo?: Repository) {
@@ -361,9 +364,16 @@ export class MergePanel {
       const excludeRefs = this.buildExcludeRefs();
       const excludeArgs = excludeRefs.flatMap((r) => ["--exclude", r]);
       // Include stash commits in the graph
-      const stashHashes = this.hideConfig.categories.stashes
+      const stashEntries = this.hideConfig.categories.stashes
         ? []
-        : await this.gitLines("stash", "list", "--format=%H").catch(() => [] as string[]);
+        : await this.gitLines("stash", "list", "--format=%H\t%gd").catch(() => [] as string[]);
+      const stashRefByHash = new Map<string, string>();
+      for (const line of stashEntries) {
+        const [hash, ref] = line.split("\t");
+        if (hash && ref) stashRefByHash.set(hash, ref);
+      }
+      this.stashRefByHash = stashRefByHash;
+      const stashHashes = [...stashRefByHash.keys()];
       log.info(
         `sendCommits:start repo=${this.repo.rootUri.fsPath} excludeRefs=${excludeRefs.length} stashes=${stashHashes.length}`,
       );
@@ -373,11 +383,14 @@ export class MergePanel {
         this.git("status", "--porcelain").catch(() => ""),
         this.git("rev-parse", "HEAD").catch(() => ""),
       ]);
-      const hasUncommitted = statusOut.length > 0;
-      const stagedCount = statusOut
-        .split("\n")
-        .filter((l) => l.length > 0 && l[0] !== " " && l[0] !== "?").length;
-      const unstagedCount = statusOut.split("\n").filter((l) => l.length > 0).length;
+      const statusLines = statusOut.split("\n").filter((l) => l.length > 0);
+      const hasUncommitted = statusLines.length > 0;
+      const untrackedCount = statusLines.filter((l) => l.startsWith("?? ")).length;
+      const stagedCount = statusLines.filter((l) => !l.startsWith("?? ") && l[0] && l[0] !== " ").length;
+      const unstagedTrackedCount = statusLines.filter(
+        (l) => !l.startsWith("?? ") && l[1] && l[1] !== " ",
+      ).length;
+      const unstagedCount = unstagedTrackedCount + untrackedCount;
 
       const lines = await this.gitLines(
         "log",
@@ -408,8 +421,8 @@ export class MergePanel {
         commits.push({
           hash: "__uncommitted__",
           parents: [headHash],
-          subject: `${unstagedCount} uncommitted change${unstagedCount !== 1 ? "s" : ""}${stagedCount > 0 ? ` (${stagedCount} staged)` : ""}`,
-          author: "",
+          subject: `${stagedCount} staged file${stagedCount !== 1 ? "s" : ""}, ${unstagedCount} unstaged file${unstagedCount !== 1 ? "s" : ""}`,
+          author: "Commit changes",
           date: "",
           refs: [],
           isUncommitted: true,
@@ -468,15 +481,28 @@ export class MergePanel {
   private async sendCommitDetail(hash: string) {
     if (!this.repo) return;
     try {
-      const [info, diffStat, diffRaw] = await Promise.all([
+      if (hash === "__uncommitted__") {
+        await this.sendUncommittedDetail();
+        return;
+      }
+
+      const stashRef = this.stashRefByHash.get(hash);
+      const [info, diffStat, diffRaw, nameStatusRaw] = await Promise.all([
         this.git(
           "show",
           "--no-patch",
           "--format=%H\t%T\t%P\t%an\t%ae\t%aI\t%cn\t%ce\t%cI\t%D\t%B",
           hash,
         ),
-        this.git("diff-tree", "--no-commit-id", "-r", "--numstat", "-m", "--first-parent", hash),
-        this.git("diff-tree", "--no-commit-id", "-p", "-U3", "-m", "--first-parent", hash),
+        stashRef
+          ? this.git("stash", "show", "--include-untracked", "--numstat", stashRef)
+          : this.git("diff-tree", "--no-commit-id", "-r", "--numstat", "-m", "--first-parent", hash),
+        stashRef
+          ? this.git("stash", "show", "--include-untracked", "-p", "-U3", stashRef)
+          : this.git("diff-tree", "--no-commit-id", "-p", "-U3", "-m", "--first-parent", hash),
+        stashRef
+          ? this.git("stash", "show", "--include-untracked", "--name-status", stashRef)
+          : this.git("diff-tree", "--no-commit-id", "-r", "--name-status", "-m", "--first-parent", hash),
       ]);
       const parts = info.split("\t");
       const fullHash = parts[0]!;
@@ -491,23 +517,14 @@ export class MergePanel {
       const refs = parts[9] ? parts[9]!.split(", ").filter((r) => r.length > 0) : [];
       const body = parts.slice(10).join("\t").trim();
 
-      const files = diffStat
-        ? diffStat
-            .split("\n")
-            .filter((l) => l.length > 0)
-            .map((l) => {
-              const [added, deleted, ...pathParts] = l.split("\t");
-              const path = pathParts.join("\t");
-              return {
-                path,
-                added: added === "-" ? -1 : Number(added),
-                deleted: deleted === "-" ? -1 : Number(deleted),
-              };
-            })
-        : [];
-
-      // Parse unified diff into per-file hunks
-      const fileDiffs = this.parseDiff(diffRaw);
+      const statFiles = this.parseNumstat(diffStat);
+      const modeByPath = this.parseNameStatus(nameStatusRaw);
+      const diffByPath = this.parseDiff(diffRaw);
+      const files = statFiles.map((f) => ({
+        ...f,
+        mode: modeByPath.get(f.path) ?? "M",
+        hunks: { combined: diffByPath[f.path] ?? [] },
+      }));
 
       this.panel.webview.postMessage({
         type: "commitDetail",
@@ -524,7 +541,6 @@ export class MergePanel {
           refs,
           body,
           files,
-          fileDiffs,
         },
       });
     } catch (err) {
@@ -532,26 +548,117 @@ export class MergePanel {
     }
   }
 
+  private async sendUncommittedDetail() {
+    if (!this.repo) return;
+    try {
+      const [headHash, diffStat, diffRaw, statusOut, stagedStat, unstagedStat, stagedRaw, unstagedRaw] =
+        await Promise.all([
+        this.git("rev-parse", "HEAD").catch(() => ""),
+        this.git("diff", "--numstat", "HEAD").catch(() => ""),
+        this.git("diff", "-U3", "HEAD").catch(() => ""),
+        this.git("status", "--porcelain").catch(() => ""),
+        this.git("diff", "--cached", "--numstat").catch(() => ""),
+        this.git("diff", "--numstat").catch(() => ""),
+        this.git("diff", "--cached", "-U3").catch(() => ""),
+        this.git("diff", "-U3").catch(() => ""),
+      ]);
+
+      const files = this.parseNumstat(diffStat);
+      const statusByPath = this.parsePorcelainStatus(statusOut);
+      const modeByPath = this.parsePorcelainModes(statusOut);
+      const stagedFiles = this.parseNumstat(stagedStat).map((f) => ({
+        ...f,
+        mode: statusByPath.get(f.path)?.x?.trim() || "M",
+      }));
+      const unstagedFiles = this.parseNumstat(unstagedStat).map((f) => ({
+        ...f,
+        mode: statusByPath.get(f.path)?.y?.trim() || "M",
+      }));
+      const stagedDiffByPath = this.parseDiff(stagedRaw);
+      const unstagedDiffByPath = this.parseDiff(unstagedRaw);
+
+      // Include untracked files that are not present in `git diff HEAD`.
+      const untrackedPaths = statusOut
+        .split("\n")
+        .filter((l) => l.startsWith("?? "))
+        .map((l) => l.slice(3).trim())
+        .filter((p) => p.length > 0);
+      const untrackedFiles = untrackedPaths.map((path) => ({ path, added: 0, deleted: 0, mode: "??" }));
+      const existing = new Set(files.map((f) => f.path));
+      for (const path of untrackedPaths) {
+        if (!existing.has(path)) {
+          files.push({ path, added: 0, deleted: 0 });
+        }
+      }
+
+      const untrackedContentByPath = new Map<string, string>();
+      await Promise.all(
+        untrackedPaths.map(async (p) => {
+          const content = await this.readWorkingFileContent(p);
+          if (content !== undefined) {
+            untrackedContentByPath.set(p, content);
+          }
+        }),
+      );
+
+      const combinedDiffByPath = this.parseDiff(diffRaw);
+      const detailedFiles = files.map((f) => ({
+        ...f,
+        mode: modeByPath.get(f.path) ?? "M",
+        content: modeByPath.get(f.path) === "??" ? untrackedContentByPath.get(f.path) : undefined,
+        hunks: {
+          combined: combinedDiffByPath[f.path] ?? [],
+          staged: stagedDiffByPath[f.path] ?? [],
+          unstaged: unstagedDiffByPath[f.path] ?? [],
+        },
+      }));
+      const detailedByPath = new Map(detailedFiles.map((f) => [f.path, f]));
+      const toDetailed = (list: { path: string; added: number; deleted: number; mode: string }[]) =>
+        list.map((f) => detailedByPath.get(f.path) ?? f);
+      const nowIso = new Date().toISOString();
+      this.panel.webview.postMessage({
+        type: "commitDetail",
+        detail: {
+          hash: "__uncommitted__",
+          tree: headHash,
+          parents: headHash ? [headHash] : [],
+          authorName: "Working tree",
+          authorEmail: "",
+          authorDate: nowIso,
+          committerName: "Working tree",
+          committerEmail: "",
+          committerDate: nowIso,
+          refs: [],
+          body: "Uncommitted working tree changes compared to HEAD.",
+          files: detailedFiles,
+          workingTreeChanges: {
+            staged: toDetailed(stagedFiles),
+            unstaged: toDetailed(unstagedFiles),
+            untracked: toDetailed(untrackedFiles),
+          },
+        },
+      });
+    } catch (err) {
+      log.error(`sendUncommittedDetail failed: ${err}`);
+    }
+  }
+
   private parseDiff(raw: string): Record<
     string,
     {
-      hunks: {
-        oldStart: number;
-        newStart: number;
-        lines: { type: string; oldLine?: number; newLine?: number; text: string }[];
-      }[];
-    }
+      oldStart: number;
+      newStart: number;
+      lines: { type: string; oldLine?: number; newLine?: number; text: string }[];
+    }[]
   > {
     if (!raw) return {};
     const result: Record<
       string,
       {
-        hunks: {
-          oldStart: number;
-          newStart: number;
-          lines: { type: string; oldLine?: number; newLine?: number; text: string }[];
-        }[];
-      }
+        oldStart: number;
+        newStart: number;
+        lines: { type: string; oldLine?: number; newLine?: number; text: string }[];
+      }[]
     > = {};
     const fileSections = raw.split(/^diff --git /m).filter((s) => s.length > 0);
 
@@ -599,9 +706,86 @@ export class MergePanel {
           newLine++;
         }
       }
-      result[filePath] = { hunks };
+      result[filePath] = hunks;
     }
     return result;
+  }
+
+  private parseNumstat(raw: string): { path: string; added: number; deleted: number }[] {
+    if (!raw) return [];
+    return raw
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map((l) => {
+        const [added, deleted, ...pathParts] = l.split("\t");
+        const path = pathParts[pathParts.length - 1] ?? "";
+        return {
+          path,
+          added: added === "-" ? -1 : Number(added),
+          deleted: deleted === "-" ? -1 : Number(deleted),
+        };
+      })
+      .filter((f) => f.path.length > 0);
+  }
+
+  private parseNameStatus(raw: string): Map<string, string> {
+    const result = new Map<string, string>();
+    if (!raw) return result;
+    for (const line of raw.split("\n")) {
+      if (!line) continue;
+      const parts = line.split("\t");
+      if (parts.length < 2) continue;
+      const status = parts[0]!;
+      const path = parts[parts.length - 1]!;
+      result.set(path, status);
+    }
+    return result;
+  }
+
+  private parsePorcelainModes(raw: string): Map<string, string> {
+    const statusByPath = this.parsePorcelainStatus(raw);
+    const result = new Map<string, string>();
+    for (const [path, { x, y }] of statusByPath.entries()) {
+      if (x === "?" && y === "?") {
+        result.set(path, "??");
+        continue;
+      }
+      const sx = x.trim();
+      const sy = y.trim();
+      if (sx && sy) result.set(path, sx === sy ? sx : `${sx}/${sy}`);
+      else result.set(path, sx || sy || "M");
+    }
+    return result;
+  }
+
+  private parsePorcelainStatus(raw: string): Map<string, { x: string; y: string }> {
+    const result = new Map<string, { x: string; y: string }>();
+    if (!raw) return result;
+    for (const line of raw.split("\n")) {
+      if (line.length < 4) continue;
+      const x = line[0] ?? " ";
+      const y = line[1] ?? " ";
+      const pathRaw = line.slice(3).trim();
+      if (!pathRaw) continue;
+      const path = pathRaw.includes(" -> ") ? pathRaw.split(" -> ").at(-1)! : pathRaw;
+      result.set(path, { x, y });
+    }
+    return result;
+  }
+
+  private async readWorkingFileContent(relPath: string): Promise<string | undefined> {
+    if (!this.repo) return undefined;
+    try {
+      const absPath = path.join(this.repo.rootUri.fsPath, relPath);
+      const stat = await fs.stat(absPath);
+      const maxBytes = 128 * 1024;
+      if (!stat.isFile() || stat.size > maxBytes) return undefined;
+      const content = await fs.readFile(absPath);
+      if (content.includes(0)) return undefined;
+      return content.toString("utf8");
+    } catch {
+      return undefined;
+    }
   }
 
   // ── Actions ──

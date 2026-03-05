@@ -34,14 +34,31 @@ function remoteItemsByTime(
 ) {
   return [...remoteItems(remoteName, branches)].sort((a, b) => (a.date < b.date ? 1 : -1));
 }
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function displayDate(iso: string, rel: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const age = Date.now() - d.getTime();
+  if (age < 4 * WEEK_MS) return rel;
+  const mon = d.toLocaleString("en", { month: "short" });
+  const day = d.getDate();
+  const yr = d.getFullYear();
+  return yr === new Date().getFullYear() ? `${mon} ${day}` : `${mon} ${day}, ${yr}`;
+}
 </script>
 
 <template>
   <div class="locations">
-    <div class="head-bar" v-if="store.locations.head">
-      <span class="head-icon">&#9679;</span>
-      {{ store.locations.head }}
-    </div>
+    <RefItem
+      v-if="store.locations.head"
+      :ref-key="'branch:' + store.locations.head"
+      :name="store.locations.head"
+      class="head-row"
+    >
+      <template #before><span class="head-dot">●</span></template>
+    </RefItem>
 
     <TreeSection
       label="Branches"
@@ -63,7 +80,7 @@ function remoteItemsByTime(
             <span v-if="b.ahead" class="ahead">{{ b.ahead }}&#8593;</span>
             <span v-if="b.behind" class="behind">{{ b.behind }}&#8595;</span>
           </span>
-          <span class="date">{{ b.date }}</span>
+          <span class="date">{{ displayDate(b.date, b.dateRel) }}</span>
         </RefItem>
       </template>
       <BranchFolder v-else :items="branchItems">
@@ -100,7 +117,7 @@ function remoteItemsByTime(
             :ref-key="item._refKey"
             :name="item.name"
           >
-            <span class="date">{{ item.date }}</span>
+            <span class="date">{{ displayDate(item.date, item.dateRel) }}</span>
           </RefItem>
         </template>
         <BranchFolder v-else :items="remoteItems(r.name, r.branches)" :depth="1">
@@ -114,7 +131,7 @@ function remoteItemsByTime(
     <TreeSection label="Tags" :count="store.locations.tags.length" sort-key="tags">
       <div v-for="t in store.locations.tags" :key="t.name" class="tree-item">
         <span class="item-name">{{ t.name }}</span>
-        <span v-if="t.date" class="date">{{ t.date }}</span>
+        <span v-if="t.date" class="date">{{ displayDate(t.date, t.dateRel) }}</span>
       </div>
     </TreeSection>
 
@@ -135,19 +152,15 @@ function remoteItemsByTime(
   scrollbar-gutter: stable;
 }
 
-.head-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px 8px;
-  font-size: 12px;
+.head-row {
   font-weight: 600;
-  color: var(--fg);
+  margin-bottom: 4px;
 }
 
-.head-icon {
-  color: var(--accent);
+.head-dot {
+  color: #3fb950;
   font-size: 8px;
+  margin-right: 4px;
 }
 
 .tree-item {

@@ -15,6 +15,7 @@ const store = useAppStore();
     :class="['ref-item', { hidden: store.isHidden(refKey) }]"
     :style="depth != null ? { paddingLeft: depth * 16 + 30 + 'px' } : undefined"
   >
+    <slot name="before" />
     <span class="item-name">{{ name }}</span>
     <slot />
     <button

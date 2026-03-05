@@ -41,7 +41,9 @@ function linesForRow(row: GraphRow): LineDef[] {
     const parentIdx = parentIndices[pi]!;
 
     if (parentIdx === -1) {
-      result.push({ path: `M${x1} ${y1}L${x1} ${y1 + ROW_H}`, color, dashed });
+      if (!row.isVisibleRoot) {
+        result.push({ path: `M${x1} ${y1}L${x1} ${y1 + ROW_H}`, color, dashed });
+      }
       continue;
     }
 

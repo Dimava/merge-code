@@ -51,24 +51,12 @@ export function createWebSocketClient(url: string): Router & { close(): void } {
     return () => set.delete(cb);
   }
 
-  // Build typed proxy from router interfaces so each method
-  // just forwards its args to `call` with the right return type.
-  type MethodProxy<T> = {
-    [K in keyof T]: T[K] extends (args: infer A) => Promise<infer R>
-      ? (args: A) => Promise<R>
-      : T[K] extends () => Promise<infer R>
-        ? () => Promise<R>
-        : never;
-  };
-
-  function proxyGroup<T extends Record<string, (...args: never[]) => Promise<unknown>>>(
-    keys: (keyof T & string)[],
-  ): MethodProxy<T> {
+  function proxyGroup<T>(keys: (keyof T & string)[]): T {
     const obj = {} as Record<string, (args?: unknown) => Promise<unknown>>;
     for (const key of keys) {
       obj[key] = (args?: unknown) => call(key, args);
     }
-    return obj as MethodProxy<T>;
+    return obj as T;
   }
 
   const queries = proxyGroup<RouterQueries>([

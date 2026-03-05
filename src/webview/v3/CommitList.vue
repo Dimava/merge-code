@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useAppStore } from "./store";
-import { layoutGraph } from "./graphLayout";
+import { layoutGraph, laneColor } from "./graphLayout";
 import type { GraphRow } from "./plan";
 import CommitGraphSvg from "./CommitGraphSvg.vue";
 
@@ -63,12 +63,8 @@ function rowDimmed(index: number): boolean {
   return hoveredChain.value !== null && !hoveredChain.value.has(index);
 }
 
-function decoColor(d: { type: string; isHead?: true }): string {
-  if (d.isHead) return "var(--accent)";
-  if (d.type === "branch") return "var(--accent-blue)";
-  if (d.type === "remote") return "var(--accent-purple)";
-  if (d.type === "tag") return "var(--accent-yellow)";
-  return "var(--fg-faint)";
+function decoLaneColor(row: GraphRow): string {
+  return laneColor(row.col);
 }
 </script>
 
@@ -110,8 +106,8 @@ function decoColor(d: { type: string; isHead?: true }): string {
                 v-for="d in row.commit.deco"
                 :key="d.name"
                 :class="['deco', d.type, { head: d.isHead }]"
-                :style="{ borderLeftColor: decoColor(d) }"
-                >{{ d.name }}</span
+                :style="{ borderLeftColor: decoLaneColor(row), color: decoLaneColor(row) }"
+                ><span v-if="d.isHead" class="head-dot">●</span>{{ d.name }}</span
               >
             </span>
             <span v-else-if="row.commit.date" class="date">{{ row.commit.date }}</span>
@@ -206,36 +202,25 @@ function decoColor(d: { type: string; isHead?: true }): string {
 
 .deco {
   font-size: 10px;
-  padding: 0 5px;
+  padding: 0 4px 0 3px;
   line-height: 15px;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--fg-muted);
-  background: transparent;
-  border-left: 2px solid;
-  border-radius: 0;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border-left: 3px solid;
+  border-radius: 2.7px;
 }
 
-.deco.branch {
-  color: var(--accent-blue);
-}
-
-.deco.branch.head {
-  color: var(--accent);
+.deco.head {
   font-weight: 600;
 }
 
-.deco.remote {
-  color: var(--accent-purple);
-}
-
-.deco.tag {
-  color: var(--accent-yellow);
-}
-
-.deco.stash {
-  color: var(--fg-dim);
+.head-dot {
+  color: #3fb950;
+  margin-right: 1px;
+  font-size: 8px;
+  vertical-align: middle;
 }
 
 .author {

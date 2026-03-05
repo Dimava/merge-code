@@ -20,12 +20,14 @@ export interface Branch {
   ahead: number; // 0 if not tracking
   behind: number;
   tracking: string | null; // "origin/main"
-  date: string; // relative
+  date: string; // ISO 8601 (for sorting)
+  dateRel: string; // relative ("3 days ago")
 }
 
 export interface RemoteBranch {
   name: string;
-  date: string; // relative
+  date: string; // ISO 8601 (for sorting)
+  dateRel: string; // relative
 }
 
 export interface RemoteGroup {
@@ -36,7 +38,8 @@ export interface RemoteGroup {
 
 export interface Tag {
   name: string;
-  date: string; // relative
+  date: string; // ISO 8601 (for sorting)
+  dateRel: string; // relative
 }
 
 export interface Stash {
@@ -59,7 +62,7 @@ export interface CommitEntry {
   parents: string[];
   subject: string;
   author: string;
-  date: string; // relative
+  date: string; // ISO 8601
   deco: Decoration[];
   isStash?: true;
   isUncommitted?: true;
@@ -95,6 +98,8 @@ export interface FileChange {
   added: number; // -1 = binary
   deleted: number;
   hunks: DiffHunk[];
+  rawDiffLines?: string[]; // unified diff lines for git-diff-view
+  rawDiff?: string; // full unified diff string (with headers) for git-diff-view
   content?: string; // full text for untracked files
 }
 

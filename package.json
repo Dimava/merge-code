@@ -20,6 +20,8 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@git-diff-view/core": "^0.1.1",
+    "@git-diff-view/vue": "^0.1.1",
     "@types/bun": "latest",
     "@types/node": "latest",
     "@types/vscode": "latest",

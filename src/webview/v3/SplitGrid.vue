@@ -37,6 +37,7 @@ function onPointerUp() {
       class="split-grid"
       :style="{
         gridTemplateColumns: `${col1}px 1px ${col2}px 1px minmax(${minPane3}px, 1fr)`,
+        minWidth: `${col1 + 1 + col2 + 1 + minPane3}px`,
       }"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -69,7 +70,6 @@ function onPointerUp() {
   display: grid;
   height: 100%;
   width: 100%;
-  min-width: max-content;
   min-height: 0;
 }
 

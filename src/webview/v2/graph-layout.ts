@@ -106,7 +106,7 @@ export function computeGraphRows(commits: CommitEntry[]): GraphRow[] {
       chain.push(cur.hash);
       visited.add(cur.hash);
       if (cur.isStash) break;
-      const p0 = cur.parents[0];
+      const p0: string | undefined = cur.parents[0];
       cur = p0 !== undefined ? commits[indexByHash.get(p0) ?? -1] : undefined;
     }
 
@@ -231,10 +231,6 @@ export function computeGraphRows(commits: CommitEntry[]): GraphRow[] {
       }
     }
     return undefined;
-  }
-
-  function isLaneActiveAt(lane: number, row: number): boolean {
-    return spanAt(lane, row) !== undefined;
   }
 
   function sameSpanCovers(lane: number, rowA: number, rowB: number): boolean {

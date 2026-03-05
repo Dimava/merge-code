@@ -1,5 +1,6 @@
 import { resolve, join, normalize, basename } from "node:path";
 import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { $ } from "bun";
 import { watch } from "node:fs";
 import homepage from "./index.html";
@@ -24,19 +25,38 @@ import type {
 
 const PORT = 3003;
 const reposFile = resolve(import.meta.dir, "../../..", ".local/repos.txt");
-const defaultRepo = resolve(process.argv[2] || ".");
+const cliArgs = process.argv.slice(2);
+const shouldOpenBrowser = cliArgs.includes("--open");
+const repoArg = cliArgs.find((arg) => !arg.startsWith("-"));
+const defaultRepo = resolve(repoArg || ".");
+
+function openBrowser(url: string) {
+  const launch = (command: string, args: string[]) => {
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.on("error", (error) => {
+      console.warn(`Could not open browser: ${error.message}`);
+    });
+    child.unref();
+  };
+
+  if (process.platform === "win32") {
+    launch("cmd", ["/c", "start", "", url]);
+    return;
+  }
+
+  if (process.platform === "darwin") {
+    launch("open", [url]);
+    return;
+  }
+
+  launch("xdg-open", [url]);
+}
 
 // ── Git helpers ──
 
 async function git(repo: string, ...args: string[]): Promise<string> {
   const result = await $`git -C ${repo} ${args}`.text();
   return result.trim();
-}
-
-async function gitLines(repo: string, ...args: string[]): Promise<string[]> {
-  const out = await git(repo, ...args);
-  if (!out) return [];
-  return out.split("\n");
 }
 
 async function gitQuiet(repo: string, ...args: string[]): Promise<string> {
@@ -88,11 +108,11 @@ async function loadBranches(repo: string): Promise<Branch[]> {
   const lines = await gitLinesQuiet(
     repo,
     "for-each-ref",
-    "--format=%(refname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(objectname:short)",
+    "--format=%(refname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
     "refs/heads/",
   );
   return lines.map((line) => {
-    const [name, upstream, track] = line.split("\t");
+    const [name, upstream, track, date, dateRel] = line.split("\t");
     let ahead = 0;
     let behind = 0;
     if (track) {
@@ -101,7 +121,7 @@ async function loadBranches(repo: string): Promise<Branch[]> {
       if (a) ahead = Number(a[1]);
       if (b) behind = Number(b[1]);
     }
-    return { name: name!, ahead, behind, tracking: upstream || null };
+    return { name: name!, ahead, behind, tracking: upstream || null, date: date ?? "", dateRel: dateRel ?? "" };
   });
 }
 
@@ -113,12 +133,15 @@ async function loadRemotes(repo: string): Promise<RemoteGroup[]> {
       const refLines = await gitLinesQuiet(
         repo,
         "for-each-ref",
-        "--format=%(refname:short)",
+        "--format=%(refname:short)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
         `refs/remotes/${name}/`,
       );
       const branches = refLines
         .filter((l) => !l.includes("/HEAD"))
-        .map((l) => l.replace(`${name}/`, ""));
+        .map((l) => {
+          const [ref, date, dateRel] = l.split("\t");
+          return { name: ref!.replace(`${name}/`, ""), date: date ?? "", dateRel: dateRel ?? "" };
+        });
       return { name, url, branches };
     }),
   );
@@ -128,13 +151,13 @@ async function loadTags(repo: string): Promise<Tag[]> {
   const lines = await gitLinesQuiet(
     repo,
     "for-each-ref",
-    "--format=%(refname:short)\t%(creatordate:relative)",
+    "--format=%(refname:short)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
     "--sort=-creatordate",
     "refs/tags/",
   );
   return lines.map((l) => {
-    const [name, date] = l.split("\t");
-    return { name: name!, date: date ?? "" };
+    const [name, date, dateRel] = l.split("\t");
+    return { name: name!, date: date ?? "", dateRel: dateRel ?? "" };
   });
 }
 
@@ -264,11 +287,16 @@ async function getCommitDetail(repo: string, hash: string): Promise<CommitDetail
   const statFiles = parseNumstat(diffStat);
   const modes = parseNameStatus(nameStatusRaw);
   const diffs = parseDiff(diffRaw);
-  const files: FileChange[] = statFiles.map((f) => ({
-    ...f,
-    mode: fileMode(modes.get(f.path)),
-    hunks: diffs[f.path] ?? [],
-  }));
+  const files: FileChange[] = statFiles.map((f) => {
+    const d = diffs[f.path];
+    return {
+      ...f,
+      mode: fileMode(modes.get(f.path)),
+      hunks: d?.hunks ?? [],
+      rawDiffLines: d?.rawLines,
+      rawDiff: d?.rawDiff,
+    };
+  });
 
   return {
     hash: parts[0]!,
@@ -305,38 +333,68 @@ async function getUncommittedDetail(repo: string): Promise<CommitDetail> {
     .split("\n")
     .filter((l) => l.startsWith("?? "))
     .map((l) => l.slice(3).trim())
-    .filter(Boolean);
+    .filter((p) => p && !p.endsWith("/"));
 
   const existing = new Set(files.map((f) => f.path));
   for (const p of untrackedPaths) {
     if (!existing.has(p)) files.push({ path: p, added: 0, deleted: 0 });
   }
 
-  const detailedFiles: FileChange[] = files.map((f) => ({
-    ...f,
-    mode: fileMode(modes.get(f.path)),
-    hunks: diffs[f.path] ?? [],
-  }));
+  const detailedFiles: FileChange[] = files.map((f) => {
+    const d = diffs[f.path];
+    return {
+      ...f,
+      mode: fileMode(modes.get(f.path)),
+      hunks: d?.hunks ?? [],
+      rawDiffLines: d?.rawLines,
+      rawDiff: d?.rawDiff,
+    };
+  });
 
-  const stagedFiles: FileChange[] = parseNumstat(stagedStat).map((f) => ({
-    ...f,
-    mode: fileMode(modes.get(f.path)),
-    hunks: parseDiff(stagedRaw)[f.path] ?? [],
-  }));
+  const stagedDiffs = parseDiff(stagedRaw);
+  const stagedFiles: FileChange[] = parseNumstat(stagedStat).map((f) => {
+    const d = stagedDiffs[f.path];
+    return {
+      ...f,
+      mode: fileMode(modes.get(f.path)),
+      hunks: d?.hunks ?? [],
+      rawDiffLines: d?.rawLines,
+      rawDiff: d?.rawDiff,
+    };
+  });
 
-  const unstagedFiles: FileChange[] = parseNumstat(unstagedStat).map((f) => ({
-    ...f,
-    mode: fileMode(modes.get(f.path)),
-    hunks: parseDiff(unstagedRaw)[f.path] ?? [],
-  }));
+  const unstagedDiffs = parseDiff(unstagedRaw);
+  const unstagedFiles: FileChange[] = parseNumstat(unstagedStat).map((f) => {
+    const d = unstagedDiffs[f.path];
+    return {
+      ...f,
+      mode: fileMode(modes.get(f.path)),
+      hunks: d?.hunks ?? [],
+      rawDiffLines: d?.rawLines,
+      rawDiff: d?.rawDiff,
+    };
+  });
 
-  const untrackedFiles: FileChange[] = untrackedPaths.map((p) => ({
-    path: p,
-    mode: fileMode("??"),
-    added: 0,
-    deleted: 0,
-    hunks: [],
-  }));
+  const untrackedFiles: FileChange[] = await Promise.all(
+    untrackedPaths.map(async (p) => {
+      const fullPath = `${repo}/${p}`;
+      let content: string | undefined;
+      let added = 0;
+      try {
+        content = await Bun.file(fullPath).text();
+        added = content.split("\n").length;
+        if (content.endsWith("\n")) added--;
+      } catch {}
+      return {
+        path: p,
+        mode: fileMode("??"),
+        added,
+        deleted: 0,
+        hunks: [],
+        content,
+      };
+    }),
+  );
 
   const now = new Date().toISOString();
 
@@ -412,9 +470,9 @@ function parsePorcelainModes(raw: string): Map<string, string> {
   return result;
 }
 
-function parseDiff(raw: string): Record<string, DiffHunk[]> {
+function parseDiff(raw: string): Record<string, { hunks: DiffHunk[]; rawLines: string[]; rawDiff: string }> {
   if (!raw) return {};
-  const result: Record<string, DiffHunk[]> = {};
+  const result: Record<string, { hunks: DiffHunk[]; rawLines: string[]; rawDiff: string }> = {};
   const fileSections = raw.split(/^diff --git /m).filter(Boolean);
 
   for (const section of fileSections) {
@@ -423,6 +481,8 @@ function parseDiff(raw: string): Record<string, DiffHunk[]> {
     if (!headerMatch) continue;
     const filePath = headerMatch[2]!;
     const hunks: DiffHunk[] = [];
+    const rawLines: string[] = [];
+    const rawDiff = "diff --git " + section;
     let current: DiffHunk | null = null;
     let oldLine = 0;
     let newLine = 0;
@@ -435,6 +495,7 @@ function parseDiff(raw: string): Record<string, DiffHunk[]> {
         newLine = current.newStart;
         hunks.push(current);
         current.lines.push({ type: "hunk", text: line });
+        rawLines.push(line);
         continue;
       }
       if (!current) continue;
@@ -442,16 +503,19 @@ function parseDiff(raw: string): Record<string, DiffHunk[]> {
       if (line.startsWith("+")) {
         current.lines.push({ type: "add", new: newLine, text: line.slice(1) });
         newLine++;
+        rawLines.push(line);
       } else if (line.startsWith("-")) {
         current.lines.push({ type: "del", old: oldLine, text: line.slice(1) });
         oldLine++;
+        rawLines.push(line);
       } else if (line.startsWith(" ")) {
         current.lines.push({ type: "ctx", old: oldLine, new: newLine, text: line.slice(1) });
         oldLine++;
         newLine++;
+        rawLines.push(line);
       }
     }
-    result[filePath] = hunks;
+    result[filePath] = { hunks, rawLines, rawDiff };
   }
   return result;
 }
@@ -494,7 +558,7 @@ const handlers: RouterHandlers = {
 
 const clients = new Set<{ send(msg: string): void }>();
 
-Bun.serve({
+const server = Bun.serve({
   port: PORT,
   routes: {
     "/": homepage,
@@ -563,3 +627,7 @@ try {
 
 console.log(`merge-code v3 dev server → http://localhost:${PORT}`);
 console.log(`repo: ${defaultRepo}`);
+
+if (shouldOpenBrowser) {
+  openBrowser(`http://localhost:${server.port}`);
+}

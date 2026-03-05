@@ -2,34 +2,28 @@
 import { computed, ref } from "vue";
 import { useAppStore } from "./store";
 import type { CommitDetail, FileChange } from "./plan";
+import { DiffView, DiffModeEnum } from "@git-diff-view/vue";
+import "@git-diff-view/vue/styles/diff-view.css";
+import { highlighter } from "@git-diff-view/lowlight";
 
 const store = useAppStore();
 const detail = computed(() => store.detail);
 
 const expandedFiles = ref<Set<string>>(new Set());
+const collapsedGroups = ref<Set<string>>(new Set());
 
-function toggleFile(path: string) {
+function toggleFile(key: string) {
   const s = new Set(expandedFiles.value);
-  if (s.has(path)) s.delete(path);
-  else s.add(path);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
   expandedFiles.value = s;
 }
 
-function modeLabel(mode: string): string {
-  switch (mode) {
-    case "M":
-      return "modified";
-    case "A":
-      return "added";
-    case "D":
-      return "deleted";
-    case "R":
-      return "renamed";
-    case "??":
-      return "untracked";
-    default:
-      return mode;
-  }
+function toggleGroup(prefix: string) {
+  const s = new Set(collapsedGroups.value);
+  if (s.has(prefix)) s.delete(prefix);
+  else s.add(prefix);
+  collapsedGroups.value = s;
 }
 
 function modeClass(mode: string): string {
@@ -81,11 +75,56 @@ function fileDir(path: string): string {
   return i >= 0 ? path.slice(0, i + 1) : "";
 }
 
-function allFiles(d: CommitDetail): FileChange[] {
+function fileLang(path: string): string {
+  const ext = path.split(".").pop() ?? "";
+  const map: Record<string, string> = {
+    ts: "typescript",
+    tsx: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    vue: "vue",
+    json: "json",
+    css: "css",
+    scss: "scss",
+    html: "html",
+    md: "markdown",
+    py: "python",
+    rs: "rust",
+    go: "go",
+    sh: "bash",
+    yml: "yaml",
+    yaml: "yaml",
+  };
+  return map[ext] ?? ext;
+}
+
+function diffData(f: FileChange) {
+  if (!f.rawDiff) return null;
+  return {
+    newFile: { fileName: f.path, fileLang: fileLang(f.path) },
+    oldFile: { fileName: f.path, fileLang: fileLang(f.path) },
+    hunks: [f.rawDiff],
+  };
+}
+
+interface FileGroup {
+  label: string;
+  prefix: string;
+  files: FileChange[];
+}
+
+function fileGroups(d: CommitDetail): FileGroup[] {
   if (d.workingTree) {
-    return [...d.workingTree.staged, ...d.workingTree.unstaged, ...d.workingTree.untracked];
+    const groups: FileGroup[] = [];
+    if (d.workingTree.unstaged.length)
+      groups.push({ label: "Unstaged", prefix: "unstaged:", files: d.workingTree.unstaged });
+    if (d.workingTree.untracked.length)
+      groups.push({ label: "Untracked", prefix: "untracked:", files: d.workingTree.untracked });
+    if (d.workingTree.staged.length)
+      groups.push({ label: "Staged", prefix: "staged:", files: d.workingTree.staged });
+    return groups;
   }
-  return d.files;
+  return [{ label: "Files changed", prefix: "", files: d.files }];
 }
 </script>
 
@@ -113,15 +152,21 @@ function allFiles(d: CommitDetail): FileChange[] {
       <div class="body" v-if="detail.body">{{ detail.body }}</div>
     </div>
 
-    <div class="files-section">
-      <div class="files-header">
-        Files changed
-        <span class="files-count">{{ allFiles(detail).length }}</span>
+    <div v-for="group in fileGroups(detail)" :key="group.prefix" class="files-section">
+      <div
+        class="files-header"
+        :class="{ clickable: group.prefix }"
+        @click="group.prefix && toggleGroup(group.prefix)"
+      >
+        <span v-if="group.prefix" class="group-chevron" :class="{ open: !collapsedGroups.has(group.prefix) }">&#9654;</span>
+        {{ group.label }}
+        <span class="files-count">{{ group.files.length }}</span>
       </div>
 
-      <div v-for="f in allFiles(detail)" :key="f.path" class="file-block">
-        <div class="file-row" @click="toggleFile(f.path)">
-          <span class="file-chevron" :class="{ open: expandedFiles.has(f.path) }">&#9654;</span>
+      <template v-if="!group.prefix || !collapsedGroups.has(group.prefix)">
+      <div v-for="f in group.files" :key="group.prefix + f.path" class="file-block">
+        <div class="file-row" @click="toggleFile(group.prefix + f.path)">
+          <span class="file-chevron" :class="{ open: expandedFiles.has(group.prefix + f.path) }">&#9654;</span>
           <span :class="['file-mode', modeClass(f.mode)]">{{
             f.mode === "??" ? "U" : f.mode
           }}</span>
@@ -132,24 +177,19 @@ function allFiles(d: CommitDetail): FileChange[] {
           <span class="file-stat">{{ statStr(f) }}</span>
         </div>
 
-        <div v-if="expandedFiles.has(f.path) && f.hunks.length" class="diff-area">
-          <div v-for="(hunk, hi) in f.hunks" :key="hi" class="hunk">
-            <template v-for="(line, li) in hunk.lines" :key="li">
-              <div v-if="line.type === 'hunk'" class="diff-line diff-hunk">
-                <span class="ln ln-old"></span>
-                <span class="ln ln-new"></span>
-                <span class="diff-text">{{ line.text }}</span>
-              </div>
-              <div v-else :class="['diff-line', 'diff-' + line.type]">
-                <span class="ln ln-old">{{ line.old ?? "" }}</span>
-                <span class="ln ln-new">{{ line.new ?? "" }}</span>
-                <span class="diff-text">{{ line.text }}</span>
-              </div>
-            </template>
-          </div>
+        <div v-if="expandedFiles.has(group.prefix + f.path) && diffData(f)" class="diff-area">
+          <DiffView
+            :data="diffData(f)!"
+            :diff-view-mode="DiffModeEnum.Unified"
+            :diff-view-theme="store.theme"
+            :diff-view-font-size="12"
+            :diff-view-wrap="true"
+            :diff-view-highlight="true"
+            :register-highlighter="highlighter"
+          />
         </div>
 
-        <div v-if="expandedFiles.has(f.path) && f.content" class="diff-area">
+        <div v-if="expandedFiles.has(group.prefix + f.path) && !diffData(f) && f.content" class="diff-area">
           <div class="diff-line diff-add" v-for="(line, li) in f.content.split('\n')" :key="li">
             <span class="ln ln-old"></span>
             <span class="ln ln-new">{{ li + 1 }}</span>
@@ -157,6 +197,7 @@ function allFiles(d: CommitDetail): FileChange[] {
           </div>
         </div>
       </div>
+      </template>
     </div>
   </div>
 
@@ -251,7 +292,7 @@ function allFiles(d: CommitDetail): FileChange[] {
   font-family: "Commit Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
 }
 
-.files-section {
+.files-section:last-child {
   padding-bottom: 32px;
 }
 
@@ -270,6 +311,27 @@ function allFiles(d: CommitDetail): FileChange[] {
   top: 0;
   background: var(--bg-base);
   z-index: 1;
+}
+.files-header.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+.files-header.clickable:hover {
+  background: var(--bg-hover);
+}
+
+.group-chevron {
+  font-size: 8px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--fg-dim);
+  transition: transform 0.15s;
+  display: inline-block;
+  transform: rotate(0deg);
+}
+.group-chevron.open {
+  transform: rotate(90deg);
 }
 
 .files-count {
@@ -360,11 +422,7 @@ function allFiles(d: CommitDetail): FileChange[] {
 }
 
 .diff-area {
-  background: var(--bg-input);
   border-top: 1px solid var(--border);
-  font-family: "Commit Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
-  font-size: 11px;
-  line-height: 1.6;
   overflow-x: auto;
 }
 
@@ -372,26 +430,14 @@ function allFiles(d: CommitDetail): FileChange[] {
   display: flex;
   white-space: pre;
   min-width: max-content;
-}
-
-.diff-ctx {
-  color: var(--fg-muted);
+  font-family: "Commit Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .diff-add {
   background: var(--diff-add-bg);
   color: var(--diff-add-fg);
-}
-
-.diff-del {
-  background: var(--diff-del-bg);
-  color: var(--diff-del-fg);
-}
-
-.diff-hunk {
-  background: var(--diff-hunk-bg);
-  color: var(--diff-hunk-fg);
-  font-style: italic;
 }
 
 .ln {

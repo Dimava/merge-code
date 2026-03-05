@@ -53,19 +53,20 @@ export function layoutGraph(commits: CommitEntry[]): { rows: GraphRow[]; width: 
       chain.push(cur);
       visited.add(commits[cur]!.hash);
       if (commits[cur]!.isStash) break;
-      const p0 = commits[cur]!.parents[0];
+      const p0: string | undefined = commits[cur]!.parents[0];
       cur = p0 !== undefined ? idx.get(p0) : undefined;
     }
     if (chain.length === 0) continue;
 
     const fromRow = chain[0]!;
     const lastRow = chain[chain.length - 1]!;
-    // extend occupancy to first-parent target so connectors don't collide
+    // extend occupancy to cover all parent targets so connectors don't collide
     let toRow = lastRow + 1;
-    const tailParent = commits[lastRow]!.parents[0];
-    if (tailParent !== undefined) {
-      const tp = idx.get(tailParent);
-      if (tp !== undefined) toRow = Math.max(toRow, tp + 1);
+    for (const ci of chain) {
+      for (const ph of commits[ci]!.parents) {
+        const pi = idx.get(ph);
+        if (pi !== undefined) toRow = Math.max(toRow, pi + 1);
+      }
     }
 
     const lane = commits[si]!.isStash ? firstFree(fromRow, toRow, 1) : firstFree(fromRow, toRow);

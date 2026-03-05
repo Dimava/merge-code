@@ -1,0 +1,206 @@
+// ============================================================================
+// v3 Architecture Plan
+//
+// tRPC-style bridge between extension (host) and webview (client).
+// Single source of truth for types. Minimal reactivity. Easy to mock.
+// ============================================================================
+
+// ── Repo ──
+
+export interface RepoInfo {
+  id: string; // normalized path
+  path: string;
+  name: string; // last segment of path
+}
+
+// ── Locations (sidebar tree) ──
+
+export interface Branch {
+  name: string;
+  ahead: number; // 0 if not tracking
+  behind: number;
+  tracking: string | null; // "origin/main"
+}
+
+export interface RemoteGroup {
+  name: string; // "origin"
+  url: string;
+  branches: string[]; // just names: ["main", "develop"]
+}
+
+export interface Tag {
+  name: string;
+  date: string; // relative
+}
+
+export interface Stash {
+  index: number;
+  label: string;
+}
+
+export interface LocationsData {
+  head: string;
+  branches: Branch[];
+  remotes: RemoteGroup[];
+  tags: Tag[];
+  stashes: Stash[];
+}
+
+// ── Commits (graph list) ──
+
+export interface CommitEntry {
+  hash: string;
+  parents: string[];
+  subject: string;
+  author: string;
+  date: string; // relative
+  deco: Decoration[];
+  isStash?: true;
+  isUncommitted?: true;
+}
+
+export interface Decoration {
+  type: "branch" | "remote" | "tag" | "stash";
+  name: string; // "main", "origin/main", "v1.0"
+  isHead?: true; // only on the checked-out branch
+}
+
+// ── Commit Detail ──
+
+export interface CommitDetail {
+  hash: string;
+  parents: string[];
+  author: Person;
+  committer: Person | null; // null = same as author, skip in UI
+  body: string;
+  files: FileChange[];
+  workingTree?: WorkingTree; // only on __uncommitted__
+}
+
+export interface Person {
+  name: string;
+  email: string;
+  date: string; // ISO
+}
+
+export interface FileChange {
+  path: string;
+  mode: "M" | "A" | "D" | "R" | "??";
+  added: number; // -1 = binary
+  deleted: number;
+  hunks: DiffHunk[];
+  content?: string; // full text for untracked files
+}
+
+export interface WorkingTree {
+  staged: FileChange[];
+  unstaged: FileChange[];
+  untracked: FileChange[];
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  newStart: number;
+  lines: DiffLine[];
+}
+
+export interface DiffLine {
+  type: "ctx" | "add" | "del" | "hunk";
+  old?: number;
+  new?: number;
+  text: string;
+}
+
+// ── Graph Layout (computed from CommitEntry[]) ──
+
+export interface GraphRow {
+  index: number; // position in visible rows array
+  commit: CommitEntry;
+  col: number; // lane assignment
+  width: number; // rightmost lane + 1 at this row
+
+  parentIndices: number[]; // indices into rows[], -1 if not visible
+  childIndices: number[]; // indices of rows that list this as parent
+
+  isVisibleRoot: boolean; // no parents in visible list
+  isVisibleHead: boolean; // no children in visible list
+
+  edges: Edge[]; // lines from this commit to its parents
+  passThrough: number[]; // other lanes with vertical continuation
+}
+
+export interface Edge {
+  parentIndex: number; // row index of parent, -1 if offscreen
+  fromCol: number; // lane at this row (usually = row.col)
+  toCol: number; // lane of parent
+  color: string;
+}
+
+// ── Filters ──
+//
+// Prefixed string scheme:
+//   hiddenCategories: "branches", "remotes", "remotes/origin", "tags", "stashes"
+//   hiddenRefs:       "branch:feat", "remote:origin/main", "tag:v1"
+//   pinnedRefs:       "branch:main", "remote:origin/develop", "tag:v2.0"
+//   expandedMerges:   commit hashes
+
+export interface Filters {
+  hiddenCategories: Set<string>;
+  hiddenRefs: Set<string>;
+  pinnedRefs: Set<string>;
+  expandedMerges: Set<string>;
+}
+
+// ── App State ──
+//
+// Reactivity:
+//   Reactive (Vue watches):     graph.selected, graph.detail
+//   Shallow-reactive (replace): repos.list, locations.*, graph.commits, graph.rows
+//   Plain (read on demand):     filters.*
+
+export interface AppState {
+  repos: {
+    list: RepoInfo[];
+    activeId: string | null;
+  };
+
+  locations: LocationsData;
+
+  graph: {
+    commits: CommitEntry[];
+    rows: GraphRow[];
+    width: number; // global max across all rows (in lanes)
+    selected: { hash: string; index: number } | null;
+    detail: CommitDetail | null;
+  };
+
+  filters: Filters; // per-repo, keyed by repoId
+}
+
+// ── Router Contract ──
+
+export interface RouterQueries {
+  getRepos(): Promise<RepoInfo[]>;
+  getLocations(): Promise<LocationsData>;
+  getCommits(args: { filters: Filters }): Promise<CommitEntry[]>;
+  getCommitDetail(args: { hash: string }): Promise<CommitDetail>;
+  getPinnedRefs(): Promise<string[]>;
+}
+
+export interface RouterMutations {
+  switchRepo(args: { repoId: string }): Promise<void>;
+  action(args: { action: string; context: unknown }): Promise<void>;
+  setPinnedRefs(args: { refs: string[] }): Promise<void>;
+  focusCommit(args: { hash: string }): Promise<CommitEntry[]>;
+}
+
+export interface RouterSubscriptions {
+  onRepoChanged(cb: () => void): () => void;
+  onRepoListChanged(cb: () => void): () => void;
+}
+
+export interface Router {
+  queries: RouterQueries;
+  mutations: RouterMutations;
+  subscriptions: RouterSubscriptions;
+}

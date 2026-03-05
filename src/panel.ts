@@ -327,13 +327,13 @@ export class MergePanel {
   private async loadTags() {
     const lines = await this.gitLines(
       "for-each-ref",
-      "--format=%(refname:short)\t%(objectname:short)\t%(creatordate:relative)",
+      "--format=%(refname:short)\t%(objectname:short)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
       "--sort=-creatordate",
       "refs/tags/",
     );
     return lines.map((l) => {
-      const [name, commit, date] = l.split("\t");
-      return { name: name!, commit, date };
+      const [name, commit, date, dateRel] = l.split("\t");
+      return { name: name!, commit, date, dateRel };
     });
   }
 

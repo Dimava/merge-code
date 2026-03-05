@@ -33,7 +33,13 @@ type LegacyLocationsMessage = {
     name: string;
     url?: string;
     refs?: Array<{ name: string; commit?: string; hash?: string; date?: string; dateRel?: string }>;
-    branches?: Array<{ name: string; commit?: string; hash?: string; date?: string; dateRel?: string }>;
+    branches?: Array<{
+      name: string;
+      commit?: string;
+      hash?: string;
+      date?: string;
+      dateRel?: string;
+    }>;
   }>;
   tags?: Array<{ name: string; commit?: string; hash?: string; date?: string; dateRel?: string }>;
   stashes?: Array<{ index: number; label: string; hash?: string }>;
@@ -125,7 +131,8 @@ const EMPTY_LOCATIONS: LocationsData = {
 };
 
 function toStringSet(value: unknown): Set<string> {
-  if (value instanceof Set) return new Set([...value].filter((v): v is string => typeof v === "string"));
+  if (value instanceof Set)
+    return new Set([...value].filter((v): v is string => typeof v === "string"));
   if (Array.isArray(value)) return new Set(value.filter((v): v is string => typeof v === "string"));
   return new Set();
 }
@@ -139,7 +146,9 @@ function isCommitsMessage(msg: IncomingMessage): msg is LegacyCommitsMessage {
 }
 
 function isCommitDetailMessage(msg: IncomingMessage): msg is LegacyCommitDetailMessage {
-  return msg.type === "commitDetail" && typeof (msg as LegacyCommitDetailMessage).detail === "object";
+  return (
+    msg.type === "commitDetail" && typeof (msg as LegacyCommitDetailMessage).detail === "object"
+  );
 }
 
 function isPinnedRefsMessage(msg: IncomingMessage): msg is LegacyPinnedRefsMessage {
@@ -228,7 +237,7 @@ function parseDecorations(refs: string[] | undefined, headBranch: string): Decor
   return out;
 }
 
-export function createWebSocketClient(_url: string): Router & { close(): void } {
+export function createVsCodeClient(): Router & { close(): void } {
   const vscode = acquireVsCodeApi();
 
   let readySent = false;
@@ -318,7 +327,7 @@ export function createWebSocketClient(_url: string): Router & { close(): void } 
         name: t.name,
         hash: t.hash ?? t.commit ?? "",
         date: t.date ?? "",
-        dateRel: t.dateRel ?? (t.date ?? ""),
+        dateRel: t.dateRel ?? t.date ?? "",
       })),
       stashes: (msg.stashes ?? []).map((s) => ({
         index: s.index,
@@ -522,7 +531,8 @@ export function createWebSocketClient(_url: string): Router & { close(): void } 
       const msg = await waitFor(
         commitsWaiters,
         (m) =>
-          (typeof m.focusHash === "string" && (m.focusHash === hash || m.focusHash.startsWith(hash))) ||
+          (typeof m.focusHash === "string" &&
+            (m.focusHash === hash || m.focusHash.startsWith(hash))) ||
           m.commits.some((c) => c.hash === hash || c.hash.startsWith(hash)),
       ).catch(() => lastCommits);
       return toCommitEntries(msg ?? lastCommits);

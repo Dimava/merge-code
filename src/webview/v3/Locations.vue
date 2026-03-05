@@ -29,10 +29,11 @@ function remoteItemsByTime(remoteName: string, branches: RemoteBranch[]) {
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function displayDate(iso: string, rel: string): string {
-  if (!iso) return "";
+  if (!iso && !rel) return "";
   const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return rel || iso;
   const age = Date.now() - d.getTime();
-  if (age < 4 * WEEK_MS) return rel;
+  if (age < 4 * WEEK_MS) return rel || iso;
   const mon = d.toLocaleString("en", { month: "short" });
   const day = d.getDate();
   const yr = d.getFullYear();
@@ -136,7 +137,7 @@ function displayDate(iso: string, rel: string): string {
         @click="store.selectCommit(t.hash)"
       >
         <span class="item-name">{{ t.name }}</span>
-        <span v-if="t.date" class="date">{{ displayDate(t.date, t.dateRel) }}</span>
+        <span v-if="t.date || t.dateRel" class="date">{{ displayDate(t.date, t.dateRel) }}</span>
       </div>
     </TreeSection>
 

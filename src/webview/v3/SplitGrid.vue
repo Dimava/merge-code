@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref } from "vue";
 
 const container = ref<HTMLElement>();
 const col1 = ref(200);
@@ -35,7 +35,7 @@ function onPointerUp() {
     ref="container"
     class="split-grid"
     :style="{
-      gridTemplateColumns: `${col1}px 4px ${col2}px 4px minmax(${minPane3}px, 1fr)`,
+      gridTemplateColumns: `${col1}px 1px ${col2}px 1px minmax(${minPane3}px, 1fr)`,
     }"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
@@ -60,7 +60,7 @@ function onPointerUp() {
   flex: 1;
   min-height: 0;
   width: 100%;
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .pane-slot {
@@ -69,12 +69,21 @@ function onPointerUp() {
 }
 
 .divider {
-  background: #333;
+  background: var(--border);
   cursor: col-resize;
   transition: background 0.15s;
+  position: relative;
+}
+.divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
 }
 .divider:hover,
 .divider:active {
-  background: #555;
+  background: var(--accent);
 }
 </style>

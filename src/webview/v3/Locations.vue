@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { locations } from "./store";
+import { useAppStore } from "./store";
 import TreeSection from "./TreeSection.vue";
+
+const store = useAppStore();
 </script>
 
 <template>
   <div class="locations">
-    <div class="head-bar" v-if="locations.head">
+    <div class="head-bar" v-if="store.locations.head">
       <span class="head-icon">&#9679;</span>
-      {{ locations.head }}
+      {{ store.locations.head }}
     </div>
 
-    <TreeSection label="Branches" :count="locations.branches.length" default-open>
+    <TreeSection label="Branches" :count="store.locations.branches.length" default-open>
       <div
-        v-for="b in locations.branches"
+        v-for="b in store.locations.branches"
         :key="b.name"
         class="tree-item"
       >
@@ -25,9 +27,9 @@ import TreeSection from "./TreeSection.vue";
       </div>
     </TreeSection>
 
-    <TreeSection label="Remotes" :count="locations.remotes.length" default-open>
+    <TreeSection label="Remotes" :count="store.locations.remotes.length" default-open>
       <TreeSection
-        v-for="r in locations.remotes"
+        v-for="r in store.locations.remotes"
         :key="r.name"
         :label="r.name"
         :count="r.branches.length"
@@ -44,9 +46,9 @@ import TreeSection from "./TreeSection.vue";
       </TreeSection>
     </TreeSection>
 
-    <TreeSection label="Tags" :count="locations.tags.length">
+    <TreeSection label="Tags" :count="store.locations.tags.length">
       <div
-        v-for="t in locations.tags"
+        v-for="t in store.locations.tags"
         :key="t.name"
         class="tree-item"
       >
@@ -55,9 +57,9 @@ import TreeSection from "./TreeSection.vue";
       </div>
     </TreeSection>
 
-    <TreeSection label="Stashes" :count="locations.stashes.length">
+    <TreeSection label="Stashes" :count="store.locations.stashes.length">
       <div
-        v-for="s in locations.stashes"
+        v-for="s in store.locations.stashes"
         :key="s.index"
         class="tree-item"
       >
@@ -82,11 +84,11 @@ import TreeSection from "./TreeSection.vue";
   padding: 4px 12px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--fg);
 }
 
 .head-icon {
-  color: #6bc5f8;
+  color: var(--accent);
   font-size: 8px;
 }
 
@@ -99,6 +101,7 @@ import TreeSection from "./TreeSection.vue";
   cursor: pointer;
   white-space: nowrap;
   min-width: 0;
+  transition: background 0.1s;
 }
 
 .tree-item.nested {
@@ -106,7 +109,7 @@ import TreeSection from "./TreeSection.vue";
 }
 
 .tree-item:hover {
-  background: #2a2d2e;
+  background: var(--bg-hover);
 }
 
 .item-name {
@@ -120,15 +123,15 @@ import TreeSection from "./TreeSection.vue";
 }
 
 .ahead {
-  color: #a9dc76;
+  color: var(--accent);
 }
 
 .behind {
-  color: #fc6d7b;
+  color: var(--accent-pink);
 }
 
 .tracking {
-  color: #666;
+  color: var(--fg-faint);
   font-size: 11px;
   margin-left: auto;
   overflow: hidden;
@@ -136,7 +139,7 @@ import TreeSection from "./TreeSection.vue";
 }
 
 .date {
-  color: #666;
+  color: var(--fg-faint);
   font-size: 11px;
   margin-left: auto;
 }

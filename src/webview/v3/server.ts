@@ -1,4 +1,5 @@
 import { resolve, join, normalize, basename } from "node:path";
+import { existsSync } from "node:fs";
 import { $ } from "bun";
 import { watch } from "node:fs";
 import homepage from "./index.html";
@@ -65,6 +66,7 @@ async function getRepos(): Promise<RepoInfo[]> {
       if (!p || p.startsWith("#")) continue;
       const resolved = resolve(p);
       if (repos.some((r) => r.id === normalize(resolved))) continue;
+      if (!existsSync(join(resolved, ".git"))) continue;
       repos.push({ id: normalize(resolved), path: resolved, name: basename(resolved) });
     }
   } catch {}
@@ -154,7 +156,7 @@ async function getCommits(repo: string, _filters?: Filters): Promise<CommitEntry
     gitQuiet(repo, "rev-parse", "HEAD"),
   ]);
 
-  const lines = await gitLines(
+  const lines = await gitLinesQuiet(
     repo,
     "log",
     ...excludeArgs,
@@ -543,7 +545,7 @@ function broadcast(event: string) {
 }
 
 try {
-  const gitDir = join(repoPath, ".git");
+  const gitDir = join(defaultRepo, ".git");
   watch(gitDir, { recursive: false }, (_event, filename) => {
     if (!filename) return;
     if (["HEAD", "index", "FETCH_HEAD", "ORIG_HEAD"].includes(filename) || filename === "refs") {

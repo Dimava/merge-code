@@ -45,13 +45,14 @@ const open = ref(props.defaultOpen);
   font-weight: 600;
   font-size: 12px;
   height: 22px;
+  transition: background 0.1s;
 }
 .tree-section.nested .tree-header {
   font-weight: 400;
   height: 20px;
 }
 .tree-header:hover {
-  background: #2a2d2e;
+  background: var(--bg-hover);
 }
 .chevron {
   font-size: 9px;
@@ -60,18 +61,21 @@ const open = ref(props.defaultOpen);
   width: 14px;
   text-align: center;
   flex-shrink: 0;
+  color: var(--fg-dim);
 }
 .chevron.open {
   transform: rotate(90deg);
 }
 .label {
   text-transform: uppercase;
+  color: var(--fg-muted);
 }
 .tree-section.nested .label {
   text-transform: none;
+  color: var(--fg);
 }
 .count {
-  color: #888;
+  color: var(--fg-faint);
   font-weight: 400;
   font-size: 11px;
 }

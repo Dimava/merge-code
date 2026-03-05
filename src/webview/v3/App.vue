@@ -3,9 +3,12 @@ import { onMounted } from "vue";
 import RepoTabs from "./RepoTabs.vue";
 import SplitGrid from "./SplitGrid.vue";
 import Locations from "./Locations.vue";
-import { connect } from "./store";
+import CommitList from "./CommitList.vue";
+import CommitDetail from "./CommitDetail.vue";
+import { useAppStore } from "./store";
 
-onMounted(connect);
+const store = useAppStore();
+onMounted(store.connect);
 </script>
 
 <template>
@@ -16,14 +19,10 @@ onMounted(connect);
         <Locations />
       </template>
       <template #pane2>
-        <div class="pane">
-          <h2>Commits</h2>
-        </div>
+        <CommitList />
       </template>
       <template #pane3>
-        <div class="pane">
-          <h2>Detail</h2>
-        </div>
+        <CommitDetail />
       </template>
     </SplitGrid>
   </div>
@@ -33,19 +32,6 @@ onMounted(connect);
 .root {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-}
-
-.pane {
-  padding: 12px;
   height: 100%;
-}
-
-h2 {
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #888;
 }
 </style>

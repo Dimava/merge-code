@@ -112,9 +112,18 @@ function nodeR(index: number): number {
 
     <!-- Nodes -->
     <template v-for="row in rows" :key="'n-' + row.index">
+      <!-- Placeholder: 3-dot icon -->
+      <g
+        v-if="row.commit.isPlaceholder"
+        :transform="`translate(${laneX(row.col)} ${rowY(row.index)})`"
+      >
+        <circle cx="-2" cy="0" r="1" fill="var(--fg-faint)" />
+        <circle cx="0" cy="0" r="1" fill="var(--fg-faint)" />
+        <circle cx="2" cy="0" r="1" fill="var(--fg-faint)" />
+      </g>
       <!-- Root (no visible parent): triangle -->
       <polygon
-        v-if="row.isVisibleRoot"
+        v-else-if="row.isVisibleRoot"
         :points="trianglePoints(laneX(row.col), rowY(row.index), nodeR(row.index) + 1)"
         :fill="laneColor(row.col)"
       />

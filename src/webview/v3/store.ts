@@ -1,4 +1,4 @@
-import { shallowRef, ref, computed, watch } from "vue";
+import { ref, computed, watch } from "vue";
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { createWebSocketClient } from "./client";
@@ -27,12 +27,12 @@ function getInitialTheme(): "dark" | "light" {
 }
 
 export const useAppStore = defineStore("app", () => {
-  const focusRequest = shallowRef<{ key: string } | null>(null);
+  const focusRequest = ref<{ key: string } | null>(null);
   function focusLocation(refKey: string) {
     focusRequest.value = { key: refKey };
   }
 
-  const defaultRepoInfo = shallowRef<RepoInfo | null>(null);
+  const defaultRepoInfo = ref<RepoInfo | null>(null);
   const extraRepos = useLocalStorage<RepoInfo[]>("mc-extra-repos", []);
   const repos = computed<RepoInfo[]>(() => {
     if (!defaultRepoInfo.value) return extraRepos.value;
@@ -42,10 +42,53 @@ export const useAppStore = defineStore("app", () => {
     ];
   });
   const activeRepo = ref<string | null>(null);
-  const locations = shallowRef<LocationsData>(emptyLocations);
-  const commits = shallowRef<CommitEntry[]>([]);
+  const locations = ref<LocationsData>(emptyLocations);
+  const commits = ref<CommitEntry[]>([]);
+
+  const commitsEnriched = computed(() => {
+    const coms = commits.value;
+    const loc = locations.value;
+    const refsByHash = new Map<
+      string,
+      { type: "branch" | "remote" | "tag"; name: string; isHead?: true }[]
+    >();
+    for (const b of loc.branches) {
+      if (!b.hash) continue;
+      const list = refsByHash.get(b.hash) ?? [];
+      list.push({
+        type: "branch",
+        name: b.name,
+        ...(b.name === loc.head && { isHead: true as const }),
+      });
+      refsByHash.set(b.hash, list);
+    }
+    for (const r of loc.remotes) {
+      for (const b of r.branches) {
+        if (!b.hash) continue;
+        const list = refsByHash.get(b.hash) ?? [];
+        list.push({ type: "remote", name: `${r.name}/${b.name}` });
+        refsByHash.set(b.hash, list);
+      }
+    }
+    for (const t of loc.tags) {
+      if (!t.hash) continue;
+      const list = refsByHash.get(t.hash) ?? [];
+      list.push({ type: "tag", name: t.name });
+      refsByHash.set(t.hash, list);
+    }
+    if (refsByHash.size === 0) return coms;
+    return coms.map((c) => {
+      const extraRefs = refsByHash.get(c.hash);
+      if (!extraRefs?.length) return c;
+      const existing = new Set(c.deco.map((d) => `${d.type}:${d.name}`));
+      const extra = extraRefs
+        .filter((r) => !existing.has(`${r.type}:${r.name}`))
+        .map((r) => ({ type: r.type, name: r.name, ...(r.isHead && { isHead: true as const }) }));
+      return extra.length ? { ...c, deco: [...c.deco, ...extra] } : c;
+    });
+  });
   const selectedHash = ref<string | null>(null);
-  const detail = shallowRef<CommitDetail | null>(null);
+  const detail = ref<CommitDetail | null>(null);
   const filters = ref<Filters>(emptyFilters);
   const theme = ref<"dark" | "light">(getInitialTheme());
 
@@ -126,10 +169,29 @@ export const useAppStore = defineStore("app", () => {
   }
 
   async function selectCommit(hash: string) {
-    if (!api || !activeRepo.value) return;
+    if (!api || !activeRepo.value) {
+      console.log("[api:store] selectCommit", hash, "→ skip (no api or repo)");
+      return;
+    }
+    const repo = activeRepo.value;
+    const inList = commits.value.some((c) => c.hash === hash && !c.isPlaceholder);
+    console.log("[api:store] selectCommit", hash, "inList:", inList);
+    if (!inList) {
+      console.log("[api:store] focusCommit", { repo, hash });
+      const focused = await api.mutations.focusCommit({ repo, hash });
+      const first = focused[0];
+      const last = focused[focused.length - 1];
+      console.log(
+        "[api:store] focusCommit →",
+        focused.length,
+        "commits",
+        first?.date && last?.date ? `[${first.date} .. ${last.date}]` : "",
+      );
+      commits.value = focused;
+    }
     selectedHash.value = hash;
     detail.value = null;
-    detail.value = await api.queries.getCommitDetail({ repo: activeRepo.value, hash });
+    detail.value = await api.queries.getCommitDetail({ repo, hash });
   }
 
   function togglePin(refKey: string) {
@@ -168,7 +230,7 @@ export const useAppStore = defineStore("app", () => {
   }
 
   const selectedCommit = computed(() =>
-    selectedHash.value ? commits.value.find((c) => c.hash === selectedHash.value) ?? null : null,
+    selectedHash.value ? (commits.value.find((c) => c.hash === selectedHash.value) ?? null) : null,
   );
 
   function isRefSelected(refKey: string) {
@@ -191,6 +253,7 @@ export const useAppStore = defineStore("app", () => {
     defaultRepoInfo,
     locations,
     commits,
+    commitsEnriched,
     selectedHash,
     detail,
     filters,

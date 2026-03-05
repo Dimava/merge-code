@@ -5,7 +5,7 @@ import { useAppStore } from "./store";
 const props = defineProps<{
   refKey: string;
   name: string;
-  hash?: string;
+  hash: string;
   depth?: number;
 }>();
 
@@ -28,7 +28,7 @@ watch(
     ref="el"
     :class="['ref-item', { hidden: store.isHidden(refKey), selected: store.isRefSelected(refKey) }]"
     :style="depth != null ? { paddingLeft: depth * 16 + 30 + 'px' } : undefined"
-    @click="hash ? () => void store.selectCommit(hash) : undefined"
+    @click="() => void store.selectCommit(hash)"
   >
     <slot name="before" />
     <span class="item-name">{{ name }}</span>

@@ -19,7 +19,9 @@ const store = useAppStore();
           class="tab-close"
           @click.stop="store.removeRepo(r.id)"
           title="Remove repo"
-        >×</button>
+        >
+          ×
+        </button>
       </div>
       <button class="tab-add" @click="store.addRepo()" title="Add repo">+</button>
     </div>
@@ -127,7 +129,10 @@ const store = useAppStore();
   color: var(--fg-dim);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  transition:
+    opacity 0.1s,
+    background 0.1s,
+    color 0.1s;
   font-family: inherit;
 }
 
@@ -152,7 +157,9 @@ const store = useAppStore();
   border-bottom: 2px solid transparent;
   color: var(--fg-dim);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   font-family: inherit;
   flex-shrink: 0;
 }

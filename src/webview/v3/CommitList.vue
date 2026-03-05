@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useAppStore } from "./store";
 import { layoutGraph, laneColor } from "./graphLayout";
 import type { GraphRow } from "./plan";
@@ -10,7 +10,7 @@ const store = useAppStore();
 const LANE_W = 14;
 const ROW_H = 38;
 
-const layout = computed(() => layoutGraph(store.commits));
+const layout = computed(() => layoutGraph(store.commitsEnriched));
 const rows = computed(() => layout.value.rows);
 const maxGraphWidth = computed(() => layout.value.width * LANE_W);
 const svgHeight = computed(() => rows.value.length * ROW_H);
@@ -20,11 +20,12 @@ const hoveredChain = ref<Set<number> | null>(null);
 
 watch(
   () => store.selectedHash,
-  (hash) => {
+  async (hash) => {
     if (!hash || !listEl.value) return;
+    await nextTick();
     listEl.value
       .querySelector<HTMLElement>(`[data-hash="${CSS.escape(hash)}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+      ?.scrollIntoView({ block: "center" });
   },
   { flush: "post" },
 );
@@ -108,7 +109,13 @@ function decoLaneColor(row: GraphRow): string {
           @click="store.selectCommit(row.commit.hash)"
         >
           <div class="row-line1">
-            <span class="subject" :class="{ uncommitted: row.commit.isUncommitted }">
+            <span
+              class="subject"
+              :class="{
+                uncommitted: row.commit.isUncommitted,
+                placeholder: row.commit.isPlaceholder,
+              }"
+            >
               {{ row.commit.subject }}
             </span>
           </div>
@@ -200,6 +207,11 @@ function decoLaneColor(row: GraphRow): string {
 .subject.uncommitted {
   font-style: italic;
   color: var(--fg-dim);
+}
+
+.subject.placeholder {
+  font-style: italic;
+  color: var(--fg-faint);
 }
 
 .badge-list {

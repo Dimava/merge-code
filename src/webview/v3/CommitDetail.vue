@@ -158,45 +158,55 @@ function fileGroups(d: CommitDetail): FileGroup[] {
         :class="{ clickable: group.prefix }"
         @click="group.prefix && toggleGroup(group.prefix)"
       >
-        <span v-if="group.prefix" class="group-chevron" :class="{ open: !collapsedGroups.has(group.prefix) }">&#9654;</span>
+        <span
+          v-if="group.prefix"
+          class="group-chevron"
+          :class="{ open: !collapsedGroups.has(group.prefix) }"
+          >&#9654;</span
+        >
         {{ group.label }}
         <span class="files-count">{{ group.files.length }}</span>
       </div>
 
       <template v-if="!group.prefix || !collapsedGroups.has(group.prefix)">
-      <div v-for="f in group.files" :key="group.prefix + f.path" class="file-block">
-        <div class="file-row" @click="toggleFile(group.prefix + f.path)">
-          <span class="file-chevron" :class="{ open: expandedFiles.has(group.prefix + f.path) }">&#9654;</span>
-          <span :class="['file-mode', modeClass(f.mode)]">{{
-            f.mode === "??" ? "U" : f.mode
-          }}</span>
-          <span class="file-path">
-            <span class="file-dir">{{ fileDir(f.path) }}</span>
-            <span class="file-name">{{ fileName(f.path) }}</span>
-          </span>
-          <span class="file-stat">{{ statStr(f) }}</span>
-        </div>
+        <div v-for="f in group.files" :key="group.prefix + f.path" class="file-block">
+          <div class="file-row" @click="toggleFile(group.prefix + f.path)">
+            <span class="file-chevron" :class="{ open: expandedFiles.has(group.prefix + f.path) }"
+              >&#9654;</span
+            >
+            <span :class="['file-mode', modeClass(f.mode)]">{{
+              f.mode === "??" ? "U" : f.mode
+            }}</span>
+            <span class="file-path">
+              <span class="file-dir">{{ fileDir(f.path) }}</span>
+              <span class="file-name">{{ fileName(f.path) }}</span>
+            </span>
+            <span class="file-stat">{{ statStr(f) }}</span>
+          </div>
 
-        <div v-if="expandedFiles.has(group.prefix + f.path) && diffData(f)" class="diff-area">
-          <DiffView
-            :data="diffData(f)!"
-            :diff-view-mode="DiffModeEnum.Unified"
-            :diff-view-theme="store.theme"
-            :diff-view-font-size="12"
-            :diff-view-wrap="true"
-            :diff-view-highlight="true"
-            :register-highlighter="highlighter"
-          />
-        </div>
+          <div v-if="expandedFiles.has(group.prefix + f.path) && diffData(f)" class="diff-area">
+            <DiffView
+              :data="diffData(f)!"
+              :diff-view-mode="DiffModeEnum.Unified"
+              :diff-view-theme="store.theme"
+              :diff-view-font-size="12"
+              :diff-view-wrap="true"
+              :diff-view-highlight="true"
+              :register-highlighter="highlighter"
+            />
+          </div>
 
-        <div v-if="expandedFiles.has(group.prefix + f.path) && !diffData(f) && f.content" class="diff-area">
-          <div class="diff-line diff-add" v-for="(line, li) in f.content.split('\n')" :key="li">
-            <span class="ln ln-old"></span>
-            <span class="ln ln-new">{{ li + 1 }}</span>
-            <span class="diff-text">{{ line }}</span>
+          <div
+            v-if="expandedFiles.has(group.prefix + f.path) && !diffData(f) && f.content"
+            class="diff-area"
+          >
+            <div class="diff-line diff-add" v-for="(line, li) in f.content.split('\n')" :key="li">
+              <span class="ln ln-old"></span>
+              <span class="ln ln-new">{{ li + 1 }}</span>
+              <span class="diff-text">{{ line }}</span>
+            </div>
           </div>
         </div>
-      </div>
       </template>
     </div>
   </div>

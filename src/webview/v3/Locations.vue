@@ -4,6 +4,7 @@ import { useAppStore } from "./store";
 import TreeSection from "./TreeSection.vue";
 import BranchFolder from "./BranchFolder.vue";
 import RefItem from "./RefItem.vue";
+import type { RemoteBranch } from "./plan";
 
 const store = useAppStore();
 
@@ -17,24 +18,11 @@ const branchesByTime = computed(() =>
   [...branchItems.value].sort((a, b) => (a.date < b.date ? 1 : -1)),
 );
 
-function normalizeBranch(b: string | { name: string; date: string; dateRel?: string; hash?: string }) {
-  return typeof b === "string" ? { name: b, date: "", dateRel: "", hash: "" } : b;
+function remoteItems(remoteName: string, branches: RemoteBranch[]) {
+  return branches.map((b) => ({ ...b, _refKey: "remote:" + remoteName + "/" + b.name }));
 }
 
-function remoteItems(
-  remoteName: string,
-  branches: (string | { name: string; date: string; dateRel?: string; hash?: string })[],
-) {
-  return branches.map((b) => {
-    const n = normalizeBranch(b);
-    return { ...n, _refKey: "remote:" + remoteName + "/" + n.name };
-  });
-}
-
-function remoteItemsByTime(
-  remoteName: string,
-  branches: (string | { name: string; date: string; dateRel?: string; hash?: string })[],
-) {
+function remoteItemsByTime(remoteName: string, branches: RemoteBranch[]) {
   return [...remoteItems(remoteName, branches)].sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
@@ -80,7 +68,13 @@ function displayDate(iso: string, rel: string): string {
         />
       </template>
       <template v-if="store.isTimeSorted('branches')">
-        <RefItem v-for="b in branchesByTime" :key="b._refKey" :ref-key="b._refKey" :name="b.name" :hash="b.hash">
+        <RefItem
+          v-for="b in branchesByTime"
+          :key="b._refKey"
+          :ref-key="b._refKey"
+          :name="b.name"
+          :hash="b.hash"
+        >
           <span v-if="b.ahead || b.behind" class="badge">
             <span v-if="b.ahead" class="ahead">{{ b.ahead }}&#8593;</span>
             <span v-if="b.behind" class="behind">{{ b.behind }}&#8595;</span>
@@ -123,7 +117,7 @@ function displayDate(iso: string, rel: string): string {
             :name="item.name"
             :hash="item.hash"
           >
-            <span class="date">{{ displayDate(item.date, item.dateRel ?? "") }}</span>
+            <span class="date">{{ displayDate(item.date, item.dateRel) }}</span>
           </RefItem>
         </template>
         <BranchFolder v-else :items="remoteItems(r.name, r.branches)" :depth="1">

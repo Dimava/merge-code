@@ -25,20 +25,37 @@ export function createWebSocketClient(url: string): Router & { close(): void } {
     else p.resolve(msg.result);
   });
 
+  ws.addEventListener("error", (e) => {
+    console.warn("[api:client] WebSocket error", e);
+  });
+
   function call<T>(method: string, params?: unknown): Promise<T> {
     return new Promise((resolve, reject) => {
       const id = nextId++;
       pending.set(id, {
-        resolve: resolve as (v: unknown) => void,
-        reject,
+        resolve: (v: unknown) => {
+          console.log("[api:client]", method, params, "→ ok", summary(v));
+          resolve(v as T);
+        },
+        reject: (e: Error) => {
+          console.log("[api:client]", method, params, "→ err", e.message);
+          reject(e);
+        },
       });
       const msg: RpcRequest = { id, method, ...(params !== undefined && { params }) };
+      console.log("[api:client]", method, params);
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
       } else {
         ws.addEventListener("open", () => ws.send(JSON.stringify(msg)), { once: true });
       }
     });
+  }
+
+  function summary(v: unknown): string {
+    if (Array.isArray(v)) return `[${v.length} items]`;
+    if (v && typeof v === "object" && "hash" in v) return `{hash}`;
+    return String(v).slice(0, 80);
   }
 
   function subscribe(event: string, cb: () => void): () => void {

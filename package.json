@@ -3,14 +3,14 @@
   "displayName": "Merge Code",
   "version": "0.0.1",
   "description": "Sublime Merge integration for VS Code",
-  "bin": {
-    "merge-code": "./src/webview/v3/server.ts"
-  },
   "categories": [
     "SCM Providers"
   ],
   "license": "MIT",
   "publisher": "dimava",
+  "bin": {
+    "merge-code": "./src/webview/v3/server.ts"
+  },
   "main": "./out/extension.js",
   "scripts": {
     "check": "oxfmt && oxlint --type-aware && tsgo --noEmit",

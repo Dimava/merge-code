@@ -71,6 +71,7 @@ export interface CommitEntry {
   deco: Decoration[];
   isStash?: true;
   isUncommitted?: true;
+  isPlaceholder?: true; // "..." for missing parent in windowed view
 }
 
 export interface Decoration {

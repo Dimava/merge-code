@@ -169,13 +169,15 @@ async function loadTags(repo: string): Promise<Tag[]> {
   const lines = await gitLinesQuiet(
     repo,
     "for-each-ref",
-    "--format=%(refname:short)\t%(objectname)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
+    "--format=%(refname:short)\t%(objectname)\t%(*objectname)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
     "--sort=-creatordate",
     "refs/tags/",
   );
   return lines.map((l) => {
-    const [name, hash, date, dateRel] = l.split("\t");
-    return { name: name!, hash: hash ?? "", date: date ?? "", dateRel: dateRel ?? "" };
+    const [name, objHash, peeledHash, date, dateRel] = l.split("\t");
+    // Use peeled commit hash for annotated tags; objectname for lightweight tags
+    const hash = ((peeledHash && peeledHash.trim()) || objHash) ?? "";
+    return { name: name!, hash, date: date ?? "", dateRel: dateRel ?? "" };
   });
 }
 
@@ -187,34 +189,100 @@ async function loadStashes(repo: string): Promise<Stash[]> {
   });
 }
 
+const COMMIT_LOG_FORMAT = "%H\t%P\t%s\t%an\t%ar\t%D";
+
+function parseCommitLines(
+  lines: string[],
+  headBranch: string,
+  stashSet: Set<string>,
+): CommitEntry[] {
+  const commits: CommitEntry[] = [];
+  for (const l of lines) {
+    const [hash, parents, subject, author, date, refsRaw] = l.split("\t");
+    const deco = parseDecorations(refsRaw ?? "", headBranch);
+    commits.push({
+      hash: hash!,
+      parents: parents ? parents.split(" ").filter((p) => p.length > 0) : [],
+      subject: subject!,
+      author: author!,
+      date: date!,
+      deco,
+      isStash: stashSet.has(hash!) || undefined,
+    });
+  }
+  return commits;
+}
+
+function filterStashInternals(commits: CommitEntry[]): CommitEntry[] {
+  const stashInternals = new Set<string>();
+  for (const c of commits) {
+    if (c.isStash) {
+      for (let i = 1; i < c.parents.length; i++) {
+        stashInternals.add(c.parents[i]!);
+      }
+    }
+  }
+  return stashInternals.size > 0 ? commits.filter((c) => !stashInternals.has(c.hash)) : commits;
+}
+
+function insertPlaceholders(commits: CommitEntry[]): CommitEntry[] {
+  const hashSet = new Set(commits.map((c) => c.hash));
+  const result: CommitEntry[] = [];
+  const seen = new Set<string>();
+  for (const c of commits) {
+    result.push(c);
+    const parents = c.isStash ? c.parents.slice(0, 1) : c.parents;
+    for (const pHash of parents) {
+      if (pHash && !hashSet.has(pHash) && !seen.has(pHash)) {
+        seen.add(pHash);
+        result.push({
+          hash: pHash,
+          parents: [],
+          subject: "...",
+          author: "",
+          date: "",
+          deco: [],
+          isPlaceholder: true,
+        });
+      }
+    }
+  }
+  // Connect consecutive placeholders (cut-off middle) so the graph shows one branch
+  const placeholderIndices = result.map((c, i) => (c.isPlaceholder ? i : -1)).filter((i) => i >= 0);
+  for (let j = 0; j < placeholderIndices.length - 1; j++) {
+    const currIdx = placeholderIndices[j]!;
+    const nextIdx = placeholderIndices[j + 1]!;
+    const curr = result[currIdx]!;
+    if (curr.parents.length === 0) {
+      curr.parents = [result[nextIdx]!.hash];
+    }
+  }
+  return result;
+}
+
 async function getCommits(repo: string, _filters?: Filters): Promise<CommitEntry[]> {
   // TODO: apply filters (hidden categories, hidden refs, expanded merges)
-  const excludeArgs: string[] = [];
-
   const stashEntries = await gitLinesQuiet(repo, "stash", "list", "--format=%H\t%gd");
   const stashHashes = stashEntries.map((l) => l.split("\t")[0]!).filter(Boolean);
   const stashSet = new Set(stashHashes);
 
-  const [statusOut, headHash] = await Promise.all([
+  const [statusOut, headHash, head, lines] = await Promise.all([
     gitQuiet(repo, "status", "--porcelain"),
     gitQuiet(repo, "rev-parse", "HEAD"),
+    gitQuiet(repo, "rev-parse", "--abbrev-ref", "HEAD"),
+    gitLinesQuiet(
+      repo,
+      "log",
+      "--all",
+      ...stashHashes,
+      "--date-order",
+      "--format=" + COMMIT_LOG_FORMAT,
+      "--max-count=1000",
+    ),
   ]);
 
-  const lines = await gitLinesQuiet(
-    repo,
-    "log",
-    ...excludeArgs,
-    "--all",
-    ...stashHashes,
-    "--date-order",
-    "--format=%H\t%P\t%s\t%an\t%ar\t%D",
-    "--max-count=200",
-  );
-
-  const head = await gitQuiet(repo, "rev-parse", "--abbrev-ref", "HEAD");
   const commits: CommitEntry[] = [];
 
-  // Uncommitted entry
   const statusLines = statusOut.split("\n").filter((l) => l.length > 0);
   if (statusLines.length > 0 && headHash) {
     const staged = statusLines.filter((l) => !l.startsWith("?? ") && l[0] !== " ").length;
@@ -232,31 +300,69 @@ async function getCommits(repo: string, _filters?: Filters): Promise<CommitEntry
     });
   }
 
-  for (const l of lines) {
-    const [hash, parents, subject, author, date, refsRaw] = l.split("\t");
-    const deco = parseDecorations(refsRaw ?? "", head);
-    commits.push({
-      hash: hash!,
-      parents: parents ? parents.split(" ").filter((p) => p.length > 0) : [],
-      subject: subject!,
-      author: author!,
-      date: date!,
-      deco,
-      isStash: stashSet.has(hash!) || undefined,
-    });
-  }
+  commits.push(...parseCommitLines(lines, head, stashSet));
+  return insertPlaceholders(filterStashInternals(commits));
+}
 
-  // Filter stash internals
-  const stashInternals = new Set<string>();
-  for (const c of commits) {
-    if (c.isStash) {
-      for (let i = 1; i < c.parents.length; i++) {
-        stashInternals.add(c.parents[i]!);
-      }
+async function getCommitsFromHash(repo: string, hash: string): Promise<CommitEntry[]> {
+  const [stashEntries, head, refsContainingHash] = await Promise.all([
+    gitLinesQuiet(repo, "stash", "list", "--format=%H\t%gd"),
+    gitQuiet(repo, "rev-parse", "--abbrev-ref", "HEAD"),
+    gitLinesQuiet(
+      repo,
+      "for-each-ref",
+      "--contains",
+      hash,
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags",
+      "--format=%(refname:short)",
+    ),
+  ]);
+  const stashHashes = stashEntries.map((l) => l.split("\t")[0]!).filter(Boolean);
+  const stashSet = new Set(stashHashes);
+
+  const descendantRef = refsContainingHash[0]?.trim() || "HEAD";
+
+  const [ancestorLines, descendantLines] = await Promise.all([
+    gitLinesQuiet(
+      repo,
+      "log",
+      hash,
+      "--date-order",
+      "--format=" + COMMIT_LOG_FORMAT,
+      "--max-count=501",
+    ),
+    gitLinesQuiet(
+      repo,
+      "log",
+      "--ancestry-path",
+      `${hash}..${descendantRef}`,
+      "--date-order",
+      "--format=" + COMMIT_LOG_FORMAT,
+      "--max-count=500",
+    ),
+  ]);
+
+  const ancestors = parseCommitLines(ancestorLines, head, stashSet);
+  const descendants = parseCommitLines(descendantLines, head, stashSet);
+
+  const seen = new Set<string>();
+  const commits: CommitEntry[] = [];
+  for (const c of descendants) {
+    if (!seen.has(c.hash)) {
+      seen.add(c.hash);
+      commits.push(c);
+    }
+  }
+  for (const c of ancestors) {
+    if (!seen.has(c.hash)) {
+      seen.add(c.hash);
+      commits.push(c);
     }
   }
 
-  return stashInternals.size > 0 ? commits.filter((c) => !stashInternals.has(c.hash)) : commits;
+  return insertPlaceholders(filterStashInternals(commits));
 }
 
 function parseDecorations(refsRaw: string, headBranch: string): Decoration[] {
@@ -491,7 +597,9 @@ function parsePorcelainModes(raw: string): Map<string, string> {
   return result;
 }
 
-function parseDiff(raw: string): Record<string, { hunks: DiffHunk[]; rawLines: string[]; rawDiff: string }> {
+function parseDiff(
+  raw: string,
+): Record<string, { hunks: DiffHunk[]; rawLines: string[]; rawDiff: string }> {
   if (!raw) return {};
   const result: Record<string, { hunks: DiffHunk[]; rawLines: string[]; rawDiff: string }> = {};
   const fileSections = raw.split(/^diff --git /m).filter(Boolean);
@@ -573,7 +681,7 @@ const handlers: RouterHandlers = {
   getPinnedRefs: async () => [],
   action: async () => {},
   setPinnedRefs: async () => {},
-  focusCommit: ({ repo }) => getCommits(repo), // TODO: windowed
+  focusCommit: ({ repo, hash }) => getCommitsFromHash(repo, hash),
 };
 
 // ── Server ──
@@ -603,15 +711,22 @@ const server = Bun.serve({
     async message(ws, raw) {
       const msg: RpcRequest = JSON.parse(String(raw));
       const response: RpcResponse = { id: msg.id };
-      if (!(msg.method in handlers)) {
-        response.error = `Unknown method: ${msg.method}`;
+      const method = msg.method;
+      const params = msg.params;
+      if (!(method in handlers)) {
+        response.error = `Unknown method: ${method}`;
+        console.log("[api:server]", method, params, "→ err", response.error);
       } else {
         try {
-          // Dynamic dispatch boundary: method is validated above, params are typed by caller
-          const fn: Function = handlers[msg.method as keyof RouterHandlers];
-          response.result = await fn(msg.params);
+          const fn: Function = handlers[method as keyof RouterHandlers];
+          response.result = await fn(params);
+          const summary = Array.isArray(response.result)
+            ? `[${response.result.length} items]`
+            : "ok";
+          console.log("[api:server]", method, params, "→", summary);
         } catch (err) {
           response.error = err instanceof Error ? err.message : String(err);
+          console.log("[api:server]", method, params, "→ err", response.error);
         }
       }
 

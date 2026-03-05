@@ -26,6 +26,11 @@ function getInitialTheme(): "dark" | "light" {
   return "dark";
 }
 
+function getIsWebOrExtension(): boolean {
+  const g = globalThis as { acquireVsCodeApi?: unknown };
+  return typeof g.acquireVsCodeApi === "function";
+}
+
 export const useAppStore = defineStore("app", () => {
   const focusRequest = ref<{ key: string } | null>(null);
   function focusLocation(refKey: string) {
@@ -91,6 +96,7 @@ export const useAppStore = defineStore("app", () => {
   const detail = ref<CommitDetail | null>(null);
   const filters = ref<Filters>(emptyFilters);
   const theme = ref<"dark" | "light">(getInitialTheme());
+  const isWebOrExtension = getIsWebOrExtension();
 
   watch(
     theme,
@@ -258,6 +264,7 @@ export const useAppStore = defineStore("app", () => {
     detail,
     filters,
     theme,
+    isWebOrExtension,
     connect,
     refresh,
     switchRepo,

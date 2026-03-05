@@ -35,7 +35,9 @@
   --diff-hunk-bg: rgba(102, 217, 239, 0.08);
   --diff-hunk-fg: #75715e;
 
-  --scrollbar-thumb: #4a4a40;
+  --scrollbar-thumb: rgba(132, 128, 112, 0.72);
+  --scrollbar-thumb-hover: rgba(158, 153, 134, 0.85);
+  --scrollbar-thumb-active: rgba(182, 176, 154, 0.95);
   --scrollbar-track: transparent;
 }
 
@@ -69,9 +71,9 @@
   --diff-del-fg: #c2185b;
   --diff-hunk-bg: rgba(26, 140, 160, 0.06);
   --diff-hunk-fg: #8a8a7e;
-
-  --scrollbar-thumb: #c4c4b8;
-  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(116, 116, 108, 0.58);
+  --scrollbar-thumb-hover: rgba(95, 95, 88, 0.72);
+  --scrollbar-thumb-active: rgba(79, 79, 74, 0.82);
 }
 
 @font-face {
@@ -80,10 +82,19 @@
 }
 
 html,
-body {
+body,
+#app {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: var(--bg-base) !important;
+  color: var(--fg) !important;
+}
+
+html {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track) !important;
 }
 
 body {
@@ -116,20 +127,63 @@ body {
   color: var(--fg-dim);
 }
 
-::-webkit-scrollbar {
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
   width: 8px;
   height: 8px;
+  background: transparent !important;
 }
-::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track-piece {
+  background: transparent !important;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 4px;
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb) !important;
+  border-radius: 999px !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  min-height: 24px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--fg-faint);
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) !important;
 }
-::-webkit-scrollbar-corner {
-  background: transparent;
+*::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active) !important;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+*::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+}
+*::-webkit-scrollbar-button:single-button,
+*::-webkit-scrollbar-button:double-button,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:start:increment,
+*::-webkit-scrollbar-button:end:decrement,
+*::-webkit-scrollbar-button:end:increment,
+*::-webkit-scrollbar-button:vertical:decrement,
+*::-webkit-scrollbar-button:vertical:increment,
+*::-webkit-scrollbar-button:horizontal:decrement,
+*::-webkit-scrollbar-button:horizontal:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
 }

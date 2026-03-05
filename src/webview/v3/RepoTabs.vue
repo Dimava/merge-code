@@ -23,7 +23,14 @@ const store = useAppStore();
           ×
         </button>
       </div>
-      <button class="tab-add" @click="store.addRepo()" title="Add repo">+</button>
+      <button
+        v-if="!store.isWebOrExtension"
+        class="tab-add"
+        @click="store.addRepo()"
+        title="Add repo"
+      >
+        +
+      </button>
     </div>
     <button
       class="theme-toggle"

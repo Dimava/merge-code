@@ -171,6 +171,7 @@ export class MergePanel {
       this.repo.state.onDidChange(() => {
         void this.sendLocations();
         void this.sendCommits();
+        void this.panel.webview.postMessage({ type: "subscription", event: "repoChanged" });
       }),
     );
   }
@@ -251,13 +252,14 @@ export class MergePanel {
       return;
     }
 
-    const [branches, remotes, tags, stashes, submodules, head] = await Promise.all([
+    const [branches, remotes, tags, stashes, submodules, head, headHash] = await Promise.all([
       this.loadBranches(),
       this.loadRemotes(),
       this.loadTags(),
       this.loadStashes(),
       this.loadSubmodules(),
       this.git("rev-parse", "--abbrev-ref", "HEAD").catch(() => "(detached)"),
+      this.git("rev-parse", "HEAD").catch(() => ""),
     ]);
 
     log.info(
@@ -268,6 +270,7 @@ export class MergePanel {
       type: "locations",
       repoPath: this.repo.rootUri.fsPath,
       head,
+      headHash,
       branches,
       remotes,
       tags,
@@ -335,8 +338,11 @@ export class MergePanel {
   }
 
   private async loadStashes() {
-    const lines = await this.gitLines("stash", "list", "--format=%gs");
-    return lines.map((label, index) => ({ label, index }));
+    const lines = await this.gitLines("stash", "list", "--format=%H\t%gs");
+    return lines.map((line, index) => {
+      const [hash, label] = line.split("\t");
+      return { label: label ?? "", index, hash: hash ?? "" };
+    });
   }
 
   private async loadSubmodules() {

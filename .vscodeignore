@@ -1,0 +1,15 @@
+src/**
+v3/**
+docs/**
+bin/**
+.local/**
+.vscode/**
+.claude/**
+
+# Keep package small
+node_modules/**
+bun.lock
+tsconfig.json
+.oxlintrc.json
+*.vsix
+*.tgz

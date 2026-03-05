@@ -3,7 +3,7 @@ import { ref } from "vue";
 
 const container = ref<HTMLElement>();
 const col1 = ref(200);
-const col2 = ref(400);
+const col2 = ref(250);
 const minPane3 = 300;
 
 let dragging: 1 | 2 | null = null;

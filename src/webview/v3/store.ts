@@ -34,10 +34,14 @@ export const useAppStore = defineStore("app", () => {
   const filters = ref<Filters>(emptyFilters);
   const theme = ref<"dark" | "light">(getInitialTheme());
 
-  watch(theme, (t) => {
-    document.documentElement.setAttribute("data-theme", t);
-    localStorage.setItem("mc-theme", t);
-  }, { immediate: true });
+  watch(
+    theme,
+    (t) => {
+      document.documentElement.setAttribute("data-theme", t);
+      localStorage.setItem("mc-theme", t);
+    },
+    { immediate: true },
+  );
 
   function toggleTheme() {
     theme.value = theme.value === "dark" ? "light" : "dark";
@@ -90,5 +94,19 @@ export const useAppStore = defineStore("app", () => {
     detail.value = await api.queries.getCommitDetail({ repo: activeRepo.value, hash });
   }
 
-  return { repos, activeRepo, locations, commits, selectedHash, detail, filters, theme, connect, refresh, switchRepo, selectCommit, toggleTheme };
+  return {
+    repos,
+    activeRepo,
+    locations,
+    commits,
+    selectedHash,
+    detail,
+    filters,
+    theme,
+    connect,
+    refresh,
+    switchRepo,
+    selectCommit,
+    toggleTheme,
+  };
 });

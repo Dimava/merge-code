@@ -17,21 +17,32 @@ function toggleFile(path: string) {
 
 function modeLabel(mode: string): string {
   switch (mode) {
-    case "M": return "modified";
-    case "A": return "added";
-    case "D": return "deleted";
-    case "R": return "renamed";
-    case "??": return "untracked";
-    default: return mode;
+    case "M":
+      return "modified";
+    case "A":
+      return "added";
+    case "D":
+      return "deleted";
+    case "R":
+      return "renamed";
+    case "??":
+      return "untracked";
+    default:
+      return mode;
   }
 }
 
 function modeClass(mode: string): string {
   switch (mode) {
-    case "A": case "??": return "mode-add";
-    case "D": return "mode-del";
-    case "R": return "mode-rename";
-    default: return "mode-mod";
+    case "A":
+    case "??":
+      return "mode-add";
+    case "D":
+      return "mode-del";
+    case "R":
+      return "mode-rename";
+    default:
+      return "mode-mod";
   }
 }
 
@@ -46,8 +57,11 @@ function statStr(f: FileChange): string {
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
-      + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return (
+      d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+      " " +
+      d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    );
   } catch {
     return iso;
   }
@@ -105,14 +119,12 @@ function allFiles(d: CommitDetail): FileChange[] {
         <span class="files-count">{{ allFiles(detail).length }}</span>
       </div>
 
-      <div
-        v-for="f in allFiles(detail)"
-        :key="f.path"
-        class="file-block"
-      >
+      <div v-for="f in allFiles(detail)" :key="f.path" class="file-block">
         <div class="file-row" @click="toggleFile(f.path)">
           <span class="file-chevron" :class="{ open: expandedFiles.has(f.path) }">&#9654;</span>
-          <span :class="['file-mode', modeClass(f.mode)]">{{ f.mode === '??' ? 'U' : f.mode }}</span>
+          <span :class="['file-mode', modeClass(f.mode)]">{{
+            f.mode === "??" ? "U" : f.mode
+          }}</span>
           <span class="file-path">
             <span class="file-dir">{{ fileDir(f.path) }}</span>
             <span class="file-name">{{ fileName(f.path) }}</span>
@@ -123,20 +135,14 @@ function allFiles(d: CommitDetail): FileChange[] {
         <div v-if="expandedFiles.has(f.path) && f.hunks.length" class="diff-area">
           <div v-for="(hunk, hi) in f.hunks" :key="hi" class="hunk">
             <template v-for="(line, li) in hunk.lines" :key="li">
-              <div
-                v-if="line.type === 'hunk'"
-                class="diff-line diff-hunk"
-              >
+              <div v-if="line.type === 'hunk'" class="diff-line diff-hunk">
                 <span class="ln ln-old"></span>
                 <span class="ln ln-new"></span>
                 <span class="diff-text">{{ line.text }}</span>
               </div>
-              <div
-                v-else
-                :class="['diff-line', 'diff-' + line.type]"
-              >
-                <span class="ln ln-old">{{ line.old ?? '' }}</span>
-                <span class="ln ln-new">{{ line.new ?? '' }}</span>
+              <div v-else :class="['diff-line', 'diff-' + line.type]">
+                <span class="ln ln-old">{{ line.old ?? "" }}</span>
+                <span class="ln ln-new">{{ line.new ?? "" }}</span>
                 <span class="diff-text">{{ line.text }}</span>
               </div>
             </template>
@@ -316,10 +322,18 @@ function allFiles(d: CommitDetail): FileChange[] {
   font-family: "Commit Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
 }
 
-.mode-add { color: var(--diff-add-fg); }
-.mode-del { color: var(--diff-del-fg); }
-.mode-mod { color: var(--accent-blue); }
-.mode-rename { color: var(--accent-purple); }
+.mode-add {
+  color: var(--diff-add-fg);
+}
+.mode-del {
+  color: var(--diff-del-fg);
+}
+.mode-mod {
+  color: var(--accent-blue);
+}
+.mode-rename {
+  color: var(--accent-purple);
+}
 
 .file-path {
   overflow: hidden;

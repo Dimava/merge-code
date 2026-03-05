@@ -35,9 +35,7 @@ function linesForRow(row: GraphRow): LineDef[] {
   const color = laneColor(row.col);
   const dashed = !!row.commit.isUncommitted;
 
-  const parentIndices = row.commit.isStash
-    ? row.parentIndices.slice(0, 1)
-    : row.parentIndices;
+  const parentIndices = row.commit.isStash ? row.parentIndices.slice(0, 1) : row.parentIndices;
 
   for (let pi = 0; pi < parentIndices.length; pi++) {
     const parentIdx = parentIndices[pi]!;
@@ -58,7 +56,7 @@ function linesForRow(row: GraphRow): LineDef[] {
       const bendSpan = ROW_H * 0.67;
       const bendStartY = Math.max(y1 + 1, parentTopY - bendSpan);
       const laneDelta = row.col - pRow.col;
-      const xOff = Math.sign(laneDelta) * Math.min(Math.abs(laneDelta) * 2, NODE_R);
+      const xOff = Math.sign(laneDelta) * Math.min(Math.abs(laneDelta) * 2, NODE_R) * 0.5;
       const entryX = x2 + xOff;
       const c1y = bendStartY + bendSpan * 0.35;
       const c2y = parentTopY - bendSpan * 0.2;
@@ -76,13 +74,16 @@ function linesForRow(row: GraphRow): LineDef[] {
 
 // ── Node shapes ──
 
-function trianglePoints(cx: number, cy: number): string {
-  const r = NODE_R + 1;
+function trianglePoints(cx: number, cy: number, r: number): string {
   return `${cx - r},${cy - r} ${cx + r},${cy - r} ${cx},${cy + r}`;
 }
 
 function rowDimmed(index: number): boolean {
   return props.hoveredChain !== null && !props.hoveredChain.has(index);
+}
+
+function nodeR(index: number): number {
+  return NODE_R * (rowDimmed(index) ? 0.75 : 1);
 }
 </script>
 
@@ -112,48 +113,43 @@ function rowDimmed(index: number): boolean {
       <!-- Root (no visible parent): triangle -->
       <polygon
         v-if="row.isVisibleRoot"
-        :points="trianglePoints(laneX(row.col), rowY(row.index))"
+        :points="trianglePoints(laneX(row.col), rowY(row.index), nodeR(row.index) + 1)"
         :fill="laneColor(row.col)"
-        :opacity="rowDimmed(row.index) ? 0.25 : 1"
       />
-      <!-- Stash / uncommitted: diamond (45° rotated rect) -->
+      <!-- Stash: diamond (45° rotated rect) -->
       <rect
-        v-else-if="row.commit.isStash || row.commit.isUncommitted"
-        :x="laneX(row.col) - NODE_R"
-        :y="rowY(row.index) - NODE_R"
-        :width="NODE_R * 2"
-        :height="NODE_R * 2"
+        v-else-if="row.commit.isStash"
+        :x="laneX(row.col) - nodeR(row.index)"
+        :y="rowY(row.index) - nodeR(row.index)"
+        :width="nodeR(row.index) * 2"
+        :height="nodeR(row.index) * 2"
         rx="1"
         fill="var(--bg-base)"
         :stroke="laneColor(row.col)"
         stroke-width="1.5"
-        :stroke-dasharray="row.commit.isUncommitted ? '2 2' : undefined"
         :transform="`rotate(45 ${laneX(row.col)} ${rowY(row.index)})`"
-        :opacity="rowDimmed(row.index) ? 0.25 : 1"
       />
       <!-- Merge: hollow rounded rect -->
       <rect
         v-else-if="row.commit.parents.length > 1"
-        :x="laneX(row.col) - NODE_R"
-        :y="rowY(row.index) - NODE_R"
-        :width="NODE_R * 2"
-        :height="NODE_R * 2"
+        :x="laneX(row.col) - nodeR(row.index)"
+        :y="rowY(row.index) - nodeR(row.index)"
+        :width="nodeR(row.index) * 2"
+        :height="nodeR(row.index) * 2"
         rx="1"
         fill="var(--bg-base)"
         :stroke="laneColor(row.col)"
         stroke-width="1.5"
-        :opacity="rowDimmed(row.index) ? 0.25 : 1"
       />
       <!-- Normal commit: filled rounded rect -->
       <rect
         v-else
-        :x="laneX(row.col) - NODE_R"
-        :y="rowY(row.index) - NODE_R"
-        :width="NODE_R * 2"
-        :height="NODE_R * 2"
+        :x="laneX(row.col) - nodeR(row.index)"
+        :y="rowY(row.index) - nodeR(row.index)"
+        :width="nodeR(row.index) * 2"
+        :height="nodeR(row.index) * 2"
         rx="1"
         :fill="laneColor(row.col)"
-        :opacity="rowDimmed(row.index) ? 0.25 : 1"
       />
     </template>
   </svg>

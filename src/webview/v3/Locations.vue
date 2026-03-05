@@ -13,11 +13,7 @@ const store = useAppStore();
     </div>
 
     <TreeSection label="Branches" :count="store.locations.branches.length" default-open>
-      <div
-        v-for="b in store.locations.branches"
-        :key="b.name"
-        class="tree-item"
-      >
+      <div v-for="b in store.locations.branches" :key="b.name" class="tree-item">
         <span class="item-name">{{ b.name }}</span>
         <span v-if="b.ahead || b.behind" class="badge">
           <span v-if="b.ahead" class="ahead">{{ b.ahead }}&#8593;</span>
@@ -36,33 +32,21 @@ const store = useAppStore();
         nested
         default-open
       >
-        <div
-          v-for="branch in r.branches"
-          :key="branch"
-          class="tree-item nested"
-        >
+        <div v-for="branch in r.branches" :key="branch" class="tree-item nested">
           <span class="item-name">{{ branch }}</span>
         </div>
       </TreeSection>
     </TreeSection>
 
     <TreeSection label="Tags" :count="store.locations.tags.length">
-      <div
-        v-for="t in store.locations.tags"
-        :key="t.name"
-        class="tree-item"
-      >
+      <div v-for="t in store.locations.tags" :key="t.name" class="tree-item">
         <span class="item-name">{{ t.name }}</span>
         <span v-if="t.date" class="date">{{ t.date }}</span>
       </div>
     </TreeSection>
 
     <TreeSection label="Stashes" :count="store.locations.stashes.length">
-      <div
-        v-for="s in store.locations.stashes"
-        :key="s.index"
-        class="tree-item"
-      >
+      <div v-for="s in store.locations.stashes" :key="s.index" class="tree-item">
         <span class="item-name">{{ s.label }}</span>
       </div>
     </TreeSection>
@@ -105,7 +89,7 @@ const store = useAppStore();
 }
 
 .tree-item.nested {
-  padding-left: 46px;
+  padding-left: 30px;
 }
 
 .tree-item:hover {

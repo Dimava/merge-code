@@ -1,8 +1,14 @@
 import type { CommitEntry, GraphRow, Edge } from "./plan";
 
 const PALETTE = [
-  "#6bc5f8", "#e78a4e", "#a9dc76", "#fc6d7b",
-  "#ab9df2", "#ffd866", "#78dce8", "#ff6188",
+  "#6bc5f8",
+  "#e78a4e",
+  "#a9dc76",
+  "#fc6d7b",
+  "#ab9df2",
+  "#ffd866",
+  "#78dce8",
+  "#ff6188",
 ];
 
 export function laneColor(col: number): string {
@@ -62,9 +68,7 @@ export function layoutGraph(commits: CommitEntry[]): { rows: GraphRow[]; width: 
       if (tp !== undefined) toRow = Math.max(toRow, tp + 1);
     }
 
-    const lane = commits[si]!.isStash
-      ? firstFree(fromRow, toRow, 1)
-      : firstFree(fromRow, toRow);
+    const lane = commits[si]!.isStash ? firstFree(fromRow, toRow, 1) : firstFree(fromRow, toRow);
 
     occupy(lane, fromRow, toRow);
     for (const i of chain) col[i] = lane;
@@ -87,7 +91,10 @@ export function layoutGraph(commits: CommitEntry[]): { rows: GraphRow[]; width: 
       const iv = occupancy[l];
       if (!iv) continue;
       for (const [a, b] of iv) {
-        if (row >= a && row < b) { lanes.push(l); break; }
+        if (row >= a && row < b) {
+          lanes.push(l);
+          break;
+        }
       }
     }
     return lanes;

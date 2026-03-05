@@ -162,7 +162,7 @@ async function getCommits(repo: string, _filters?: Filters): Promise<CommitEntry
     ...excludeArgs,
     "--all",
     ...stashHashes,
-    "--topo-order",
+    "--date-order",
     "--format=%H\t%P\t%s\t%an\t%ar\t%D",
     "--max-count=200",
   );
@@ -472,9 +472,7 @@ type RpcResponse = {
 
 // Derive handler map type from router interfaces — no `as` casts needed.
 type RouterMethods = RouterQueries & RouterMutations;
-type HandlerOf<K extends keyof RouterMethods> = RouterMethods[K] extends (
-  args: infer A,
-) => infer R
+type HandlerOf<K extends keyof RouterMethods> = RouterMethods[K] extends (args: infer A) => infer R
   ? (params: A) => R
   : RouterMethods[K] extends () => infer R
     ? (params?: undefined) => R

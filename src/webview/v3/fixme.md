@@ -13,3 +13,7 @@
 - [P3] Avoid shipping UnoCSS runtime when no utility classes are used (`src/webview/v3/index.html:7`).
   Adding `@unocss/runtime/uno.global.js` and the reset stylesheet makes Bun bundle extra runtime/reset payload into `index-q*.js/css` for every webview load, but the current v3 templates use only component-scoped classes, so this adds startup cost without functional benefit.
   Remove these includes (or switch to build-time UnoCSS generation when utility classes are actually introduced) to keep the panel lightweight.
+
+- [P3] Keep commit date visible when decorations are present (`src/webview/v3/CommitList.vue:117`).
+  Changing the date node to `v-else-if` hides the timestamp for any row that has refs (`row.commit.deco.length`), so decorated commits lose date information entirely.
+  Render the date independently (or alongside decorations) so branch/tag labels do not suppress commit time metadata.

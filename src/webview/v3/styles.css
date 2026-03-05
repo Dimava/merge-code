@@ -63,9 +63,9 @@
   --accent-purple: #7b1fa2;
   --accent-yellow: #9e8600;
 
-  --diff-add-bg: rgba(74, 140, 16, 0.10);
+  --diff-add-bg: rgba(74, 140, 16, 0.1);
   --diff-add-fg: #4a8c10;
-  --diff-del-bg: rgba(194, 24, 91, 0.10);
+  --diff-del-bg: rgba(194, 24, 91, 0.1);
   --diff-del-fg: #c2185b;
   --diff-hunk-bg: rgba(26, 140, 160, 0.06);
   --diff-hunk-fg: #8a8a7e;
@@ -75,18 +75,24 @@
 }
 
 @font-face {
-  font-family: 'Commit Mono';
-  src: local('Commit Mono');
+  font-family: "Commit Mono";
+  src: local("Commit Mono");
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background: var(--bg-base);
   color: var(--fg);
   font-size: 13px;

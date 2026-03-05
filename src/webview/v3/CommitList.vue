@@ -87,10 +87,13 @@ function decoColor(d: { type: string; isHead?: true }): string {
         <div
           v-for="row in rows"
           :key="row.commit.hash"
-          :class="['row', {
-            selected: store.selectedHash === row.commit.hash,
-            dimmed: rowDimmed(row.index),
-          }]"
+          :class="[
+            'row',
+            {
+              selected: store.selectedHash === row.commit.hash,
+              dimmed: rowDimmed(row.index),
+            },
+          ]"
           :style="{ paddingLeft: rowGraphW(row) + 8 + 'px' }"
           @mouseenter="onRowEnter(row.index)"
           @click="store.selectCommit(row.commit.hash)"
@@ -101,16 +104,17 @@ function decoColor(d: { type: string; isHead?: true }): string {
             </span>
           </div>
           <div class="row-line2">
-            <span class="deco-list">
+            <span class="author">{{ row.commit.author }}</span>
+            <span v-if="row.commit.deco.length" class="deco-list right">
               <span
                 v-for="d in row.commit.deco"
                 :key="d.name"
                 :class="['deco', d.type, { head: d.isHead }]"
                 :style="{ borderLeftColor: decoColor(d) }"
-              >{{ d.name }}</span>
+                >{{ d.name }}</span
+              >
             </span>
-            <span class="author">{{ row.commit.author }}</span>
-            <span v-if="row.commit.date" class="date">{{ row.commit.date }}</span>
+            <span v-else-if="row.commit.date" class="date">{{ row.commit.date }}</span>
           </div>
         </div>
       </div>
@@ -192,6 +196,12 @@ function decoColor(d: { type: string; isHead?: true }): string {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.deco-list.right {
+  margin-left: auto;
+  min-width: 70px;
+  justify-content: flex-end;
 }
 
 .deco {

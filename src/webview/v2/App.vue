@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, getCurrentInstance } from "vue";
-import SplitPane from "../SplitPane.vue";
-import LocationsTree from "../LocationsTree.vue";
-import RefTree from "../RefTree.vue";
-import CommitList from "../CommitList.vue";
-import CommitDetail from "../CommitDetail.vue";
-import ContextMenu from "../ContextMenu.vue";
-import type { RefEntry } from "../RefTree.vue";
+import SplitPane from "./SplitPane.vue";
+import LocationsTree from "./LocationsTree.vue";
+import RefTree from "./RefTree.vue";
+import CommitList from "./CommitList.vue";
+import CommitDetail from "./CommitDetail.vue";
+import ContextMenu from "./ContextMenu.vue";
+import type { RefEntry } from "./RefTree.vue";
 
 import { webviewLog } from "./stores/bridge";
 import { useLocationsStore } from "./stores/locations";

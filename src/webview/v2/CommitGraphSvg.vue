@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { pickColor } from "./v2/graph-layout";
-import type { GraphRow } from "./v2/graph-layout";
+import { pickColor } from "./graph-layout";
+import type { GraphRow } from "./graph-layout";
 
 const props = defineProps<{
   graphRows: GraphRow[];

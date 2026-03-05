@@ -2,7 +2,7 @@
 
 ## Review Findings (2026-03-05)
 
-- [P2] Preserve secondary merge parent rows in collapsed view (`src/webview/CommitList.vue:107-109`).
+- [P2] Preserve secondary merge parent rows in collapsed view (`src/webview/v2/CommitList.vue:107-109`).
   Collapsing currently hides secondary parent commits themselves, so selecting a secondary parent can point to a commit that has no visible row.
   Keep the secondary parent node visible in collapsed mode, or auto-expand the merge when that commit is focused.
 

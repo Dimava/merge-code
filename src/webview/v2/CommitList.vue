@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref as vueRef } from "vue";
-import { pickColor } from "./v2/graph-layout";
-import type { GraphRow } from "./v2/graph-layout";
+import { pickColor } from "./graph-layout";
+import type { GraphRow } from "./graph-layout";
 import CommitGraphSvg from "./CommitGraphSvg.vue";
 
 const props = defineProps<{

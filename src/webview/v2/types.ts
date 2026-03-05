@@ -11,6 +11,7 @@ export interface BranchEntry {
 export interface RefEntry {
   name: string;
   commit?: string;
+  date?: string;
 }
 
 export interface RemoteGroup {
@@ -133,6 +134,7 @@ export interface LocationsMessage {
 export interface CommitsMessage {
   type: "commits";
   commits: CommitEntry[];
+  focusHash?: string;
 }
 
 export interface CommitDetailMessage {
@@ -156,5 +158,6 @@ export type WebviewMessage =
   | { type: "webviewLog"; level: string; message: string; data?: unknown }
   | { type: "action"; action: string; context: unknown }
   | { type: "selectCommit"; hash: string }
+  | { type: "focusCommit"; hash: string }
   | { type: "setHideConfig"; hide: HideConfig }
   | { type: "setPinnedRefs"; pinned: PinnedRefs };

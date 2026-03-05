@@ -6,30 +6,30 @@
   "categories": [
     "SCM Providers"
   ],
+  "license": "MIT",
   "publisher": "dimava",
   "main": "./out/extension.js",
   "scripts": {
     "check": "oxfmt && oxlint --type-aware && tsgo --noEmit",
     "build:webview": "bun src/webview/build.ts",
     "compile": "tsgo -p ./ && bun run build:webview",
-    "dev": "tsgo -p ./ && bun run build:webview && code --extensionDevelopmentPath=D:/tools/merge-code D:/tools/merge-code",
+    "dev": "bun run compile && bun run package && cursor --install-extension merge-code.vsix --force",
+    "dev:vscode": "tsgo -p ./ && bun run build:webview && code --extensionDevelopmentPath=D:/tools/merge-code D:/tools/merge-code",
     "watch": "tsgo -watch -p ./",
-    "package": "vsce package"
+    "package": "vsce package --out merge-code.vsix --allow-missing-repository --allow-star-activation"
   },
-  "dependencies": {
-    "pinia": "^3.0.4"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^25.3.0",
     "@types/vscode": "^1.85.0",
     "@typescript/native-preview": "latest",
+    "@vscode/vsce": "^3.2.1",
     "@vue/compiler-sfc": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
+    "pinia": "^3.0.4",
+    "typescript": "6.0.0-beta",
     "vue": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "6.0.0-beta"
   },
   "contributes": {
     "commands": [

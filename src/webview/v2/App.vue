@@ -109,7 +109,7 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
 
 <template>
   <div class="root">
-    <SplitPane :sizes="[250, 500, 350]" :min-size="120">
+    <SplitPane :sizes="[210, 430]" :min-size="120" storage-key="mergeCode.split.v1">
       <template #panel-0>
         <div class="locations-panel">
           <div class="panel-header">Locations</div>
@@ -125,7 +125,7 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
             <RefTree
               :key="'branches-' + visibility.resetKey"
               :refs="locations.branches"
-              :base-depth="1"
+              :base-depth="0"
               :head="locations.head"
               :initial-pinned="pinned.branches"
               @contextmenu="ui.branchMenu"
@@ -157,7 +157,7 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
                 <RefTree
                   :key="'remote-' + r.name + '-' + visibility.resetKey"
                   :refs="r.refs"
-                  :base-depth="2"
+                  :base-depth="0"
                   :initial-pinned="pinned.remotes[r.name]"
                   @contextmenu="(e: MouseEvent, entry: RefEntry) => remoteRefMenu(e, entry, r.name)"
                   @hidden-change="(h: Set<string>) => visibility.onRemoteHidden(r.name, h)"
@@ -178,7 +178,7 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
             <RefTree
               :key="'tags-' + visibility.resetKey"
               :refs="locations.tags"
-              :base-depth="1"
+              :base-depth="0"
               :initial-pinned="pinned.tags"
               @contextmenu="ui.tagMenu"
               @hidden-change="visibility.onTagHidden"
@@ -230,7 +230,7 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
       </template>
 
       <template #panel-2>
-        <CommitDetail :detail="commits.detail" />
+        <CommitDetail :detail="commits.detail" @select-parent="commits.focusToCommit($event)" />
       </template>
     </SplitPane>
 
@@ -270,12 +270,18 @@ function remoteRefMenu(e: MouseEvent, entry: RefEntry, remoteName: string) {
   text-align: center;
 }
 .tree-leaf {
-  padding: 2px 12px 2px 28px;
+  padding: 2px 12px 2px 22px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+}
+.tree-leaf::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
 }
 .tree-leaf:hover {
   background: var(--vscode-list-hoverBackground);

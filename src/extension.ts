@@ -86,17 +86,30 @@ export function activate(context: vscode.ExtensionContext) {
   const git = gitExt.exports;
   const api = git.getAPI(1);
   log.info(`Git API state: ${api.state}, repos: ${api.repositories.length}`);
+  let didOpenPanelOnStart = false;
 
-  api.onDidChangeState((state) => {
-    log.info(`Git API state changed: ${state}, repos: ${api.repositories.length}`);
-  });
-  api.onDidOpenRepository((repo) => {
-    const activeRepoRoot = getActiveWorkspaceRepoRoot();
-    if (!activeRepoRoot) return;
-    const openedRoot = path.normalize(repo.rootUri.fsPath).toLowerCase();
-    if (openedRoot !== activeRepoRoot) return;
-    log.info(`Repo opened: ${repo.rootUri.fsPath}`);
-  });
+  const tryOpenPanelOnStart = () => {
+    if (didOpenPanelOnStart) return;
+    const repo = getRepo(git);
+    if (!repo) return;
+    didOpenPanelOnStart = true;
+    MergePanel.open(context, repo);
+  };
+
+  context.subscriptions.push(
+    api.onDidChangeState((state) => {
+      log.info(`Git API state changed: ${state}, repos: ${api.repositories.length}`);
+      tryOpenPanelOnStart();
+    }),
+    api.onDidOpenRepository((repo) => {
+      const activeRepoRoot = getActiveWorkspaceRepoRoot();
+      if (!activeRepoRoot) return;
+      const openedRoot = path.normalize(repo.rootUri.fsPath).toLowerCase();
+      if (openedRoot !== activeRepoRoot) return;
+      log.info(`Repo opened: ${repo.rootUri.fsPath}`);
+      tryOpenPanelOnStart();
+    }),
+  );
 
   const statusBar = new StatusBar(git);
   context.subscriptions.push(statusBar);
@@ -180,6 +193,8 @@ export function activate(context: vscode.ExtensionContext) {
       MergePanel.open(context, repo);
     }),
   );
+
+  tryOpenPanelOnStart();
 }
 
 export function deactivate() {}

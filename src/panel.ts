@@ -621,6 +621,7 @@ export class MergePanel {
     try {
       const [
         headHash,
+        indexTreeHash,
         diffStat,
         diffRaw,
         statusOut,
@@ -630,6 +631,7 @@ export class MergePanel {
         unstagedRaw,
       ] = await Promise.all([
         this.git("rev-parse", "HEAD").catch(() => ""),
+        this.git("write-tree").catch(() => ""),
         this.git("diff", "--numstat", "HEAD").catch(() => ""),
         this.git("diff", "-U3", "HEAD").catch(() => ""),
         this.git("status", "--porcelain").catch(() => ""),
@@ -701,7 +703,7 @@ export class MergePanel {
         type: "commitDetail",
         detail: {
           hash: "__uncommitted__",
-          tree: headHash,
+          tree: indexTreeHash || headHash,
           parents: headHash ? [headHash] : [],
           authorName: "Working tree",
           authorEmail: "",

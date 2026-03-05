@@ -17,6 +17,9 @@ const emit = defineEmits<{
 }>();
 
 const scrollContainer = vueRef<HTMLElement>();
+const COL_W = 12;
+const GRAPH_PAD = 8;
+const expandedMerges = vueRef<Set<string>>(new Set());
 
 function emitDiag(message: string, data?: unknown, level: "info" | "warn" | "error" = "info") {
   window.dispatchEvent(
@@ -54,13 +57,70 @@ function refLaneColor(ref: string, row: GraphRow): string {
   return row.lanes[row.col]?.color ?? pickColor(row.col);
 }
 
+function rowGraphWidth(row: GraphRow): number {
+  return Math.max(1, row.lanes.length) * COL_W + GRAPH_PAD;
+}
+
+function toggleMergeParents(hash: string) {
+  const next = new Set(expandedMerges.value);
+  if (next.has(hash)) next.delete(hash);
+  else next.add(hash);
+  expandedMerges.value = next;
+}
+
+function ancestorsOf(
+  startHash: string | undefined,
+  byHash: Map<string, GraphRow>,
+  cache: Map<string, Set<string>>,
+): Set<string> {
+  if (!startHash) return new Set();
+  const cached = cache.get(startHash);
+  if (cached) return cached;
+
+  const out = new Set<string>();
+  const queue: string[] = [startHash];
+  while (queue.length > 0) {
+    const hash = queue.pop()!;
+    if (out.has(hash)) continue;
+    const row = byHash.get(hash);
+    if (!row) continue;
+    out.add(hash);
+    for (const p of row.commit.parents) queue.push(p);
+  }
+  cache.set(startHash, out);
+  return out;
+}
+
+const displayedRows = computed<GraphRow[]>(() => {
+  if (props.graphRows.length === 0) return [];
+
+  const byHash = new Map<string, GraphRow>(props.graphRows.map((r) => [r.commit.hash, r]));
+  const cache = new Map<string, Set<string>>();
+  const hidden = new Set<string>();
+
+  for (const row of props.graphRows) {
+    if (!row.isMerge) continue;
+    if (expandedMerges.value.has(row.commit.hash)) continue;
+
+    const primary = ancestorsOf(row.commit.parents[0], byHash, cache);
+    for (let i = 1; i < row.commit.parents.length; i++) {
+      const secondary = ancestorsOf(row.commit.parents[i], byHash, cache);
+      for (const h of secondary) {
+        if (!primary.has(h)) hidden.add(h);
+      }
+    }
+  }
+
+  return props.graphRows.filter((r) => !hidden.has(r.commit.hash));
+});
+
 // --- Branch path highlighting on hover ---
 
 const hoveredHash = vueRef<string | null>(null);
 
 const firstParentMap = computed(() => {
   const map = new Map<string, string>();
-  for (const row of props.graphRows) {
+  for (const row of displayedRows.value) {
     const c = row.commit;
     if (c.parents.length > 0) map.set(c.hash, c.parents[0]!);
   }
@@ -69,7 +129,7 @@ const firstParentMap = computed(() => {
 
 const firstParentChildMap = computed(() => {
   const map = new Map<string, string[]>();
-  for (const row of props.graphRows) {
+  for (const row of displayedRows.value) {
     const c = row.commit;
     if (c.parents.length > 0) {
       const p0 = c.parents[0]!;
@@ -115,7 +175,7 @@ const highlightedHashes = computed<Set<string>>(() => {
 const isHighlighting = computed(() => hoveredHash.value != null);
 
 watch(
-  () => props.graphRows.length,
+  () => displayedRows.value.length,
   async (next, prev) => {
     if (next === 0 || prev === 0) {
       emitDiag("graph-rows-length", { prev, next });
@@ -130,7 +190,7 @@ watch(
       clientHeight: el.clientHeight,
       scrollHeight: el.scrollHeight,
       rowCount: el.querySelectorAll(".commit-row").length,
-      graphRows: props.graphRows.length,
+      graphRows: displayedRows.value.length,
       graphWidth: props.graphWidth,
     });
   },
@@ -144,7 +204,7 @@ watch(
     </div>
     <div ref="scrollContainer" class="commits-scroll">
       <div
-        v-for="(row, ri) in graphRows"
+        v-for="(row, ri) in displayedRows"
         :key="row.commit.hash"
         :data-hash="row.commit.hash"
         class="commit-row"
@@ -157,7 +217,15 @@ watch(
         @mouseenter="hoveredHash = row.commit.hash"
         @mouseleave="hoveredHash = null"
       >
-        <CommitGraphSvg class="graph-svg" :graph-rows="graphRows" :graph-width="graphWidth" :row="row" :ri="ri" />
+        <CommitGraphSvg
+          class="graph-svg"
+          :graph-rows="displayedRows"
+          :graph-width="rowGraphWidth(row)"
+          :row="row"
+          :ri="ri"
+          :show-all-parents="expandedMerges.has(row.commit.hash)"
+          @toggle-parents="toggleMergeParents"
+        />
 
         <div class="commit-content">
           <div class="commit-line1">
@@ -191,7 +259,7 @@ watch(
           </div>
         </div>
       </div>
-      <div v-if="graphRows.length === 0" class="empty">No commits</div>
+      <div v-if="displayedRows.length === 0" class="empty">No commits</div>
     </div>
   </div>
 </template>
@@ -239,10 +307,10 @@ watch(
   color: var(--vscode-list-activeSelectionForeground);
 }
 .commit-row.dimmed .commit-content {
-  opacity: 0.5;
+  opacity: 0.8;
 }
 .commit-row.dimmed .graph-svg {
-  opacity: 0.5;
+  opacity: 0.8;
 }
 .commit-content {
   flex: 1;
@@ -283,9 +351,9 @@ watch(
   line-height: 1.6;
 }
 .ref-tag {
-  background: #c8a62a28;
-  color: #e8c848;
-  border: 1px solid #c8a62a55;
+  background: #ffd84d;
+  color: #111111;
+  border: 1px solid #e0b700;
 }
 .ref-branch {
   background: transparent;

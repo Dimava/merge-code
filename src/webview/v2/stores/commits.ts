@@ -22,10 +22,36 @@ export const useCommitsStore = defineStore("commits", () => {
       webviewLog("commits:payload-not-array", { payloadType: typeof msg.commits }, "warn");
     }
     list.value = isArray ? msg.commits : [];
+    const targetFocus = msg.focusHash;
+    if (targetFocus) {
+      const focus = list.value.find((c) => c.hash.startsWith(targetFocus));
+      if (focus) {
+        selectedHash.value = focus.hash;
+        focusHash.value = undefined;
+        focusHash.value = focus.hash;
+        detail.value = undefined;
+        post({ type: "selectCommit", hash: focus.hash });
+      }
+      return;
+    }
+
+    const current = selectedHash.value;
+    const currentStillVisible = current ? list.value.some((c) => c.hash === current) : false;
+    if (currentStillVisible) return;
+
+    const preferred =
+      list.value.find((c) => c.isUncommitted || c.hash === "__uncommitted__") ?? list.value[0];
+    if (preferred) {
+      selectedHash.value = preferred.hash;
+      focusHash.value = undefined;
+      detail.value = undefined;
+      post({ type: "selectCommit", hash: preferred.hash });
+    }
     webviewLog("commits:received", {
       count: list.value.length,
       first: list.value[0]?.hash,
       last: list.value.at(-1)?.hash,
+      focus: msg.focusHash,
     });
   }
 
@@ -41,11 +67,16 @@ export const useCommitsStore = defineStore("commits", () => {
 
   function focusToCommit(shortHash: string) {
     const match = list.value.find((c) => c.hash.startsWith(shortHash));
-    if (!match) return;
-    selectedHash.value = match.hash;
-    focusHash.value = match.hash;
-    detail.value = undefined;
-    post({ type: "selectCommit", hash: match.hash });
+    if (match) {
+      selectedHash.value = match.hash;
+      focusHash.value = undefined;
+      focusHash.value = match.hash;
+      detail.value = undefined;
+      post({ type: "selectCommit", hash: match.hash });
+      return;
+    }
+    // Not in current window: ask host to reload around this commit.
+    post({ type: "focusCommit", hash: shortHash });
   }
 
   return {

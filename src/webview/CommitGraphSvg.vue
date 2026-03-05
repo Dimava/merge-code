@@ -8,6 +8,11 @@ const props = defineProps<{
   graphWidth: number;
   row: GraphRow;
   ri: number;
+  showAllParents?: boolean;
+}>();
+
+const emit = defineEmits<{
+  toggleParents: [hash: string];
 }>();
 
 const ROW_H = 40;
@@ -37,7 +42,9 @@ function laneX(lane: number): number {
 }
 
 function parentHashesForRow(row: GraphRow): string[] {
-  return row.isStash ? row.commit.parents.slice(0, 1) : row.commit.parents;
+  if (row.isStash) return row.commit.parents.slice(0, 1);
+  if (row.isMerge && !props.showAllParents) return row.commit.parents.slice(0, 1);
+  return row.commit.parents;
 }
 
 function parentRowIndex(parentHash: string): number | null {
@@ -87,6 +94,11 @@ function crossLaneConnectorPath(row: GraphRow, ri: number, parentHash: string): 
   const c2y = targetTopY - bendSpan * 0.2;
   return `M${sourceX},${startY} L${sourceX},${bendStartY} C${c1x},${c1y} ${c2x},${c2y} ${targetEntryX},${targetTopY} L${targetEntryX},${targetY}`;
 }
+
+function toggleParents() {
+  if (!props.row.isMerge) return;
+  emit("toggleParents", props.row.commit.hash);
+}
 </script>
 
 <template>
@@ -120,8 +132,31 @@ function crossLaneConnectorPath(row: GraphRow, ri: number, parentHash: string): 
       :points="`${laneX(row.col)},${ROW_H / 2 + DOT_R + 1} ${laneX(row.col) - DOT_R - 1},${ROW_H / 2 - DOT_R} ${laneX(row.col) + DOT_R + 1},${ROW_H / 2 - DOT_R}`"
       :fill="row.lanes[row.col]?.color"
     />
+    <template v-else-if="row.isMerge">
+      <rect
+        :x="laneX(row.col) - DOT_R"
+        :y="ROW_H / 2 - DOT_R"
+        :width="DOT_R * 2"
+        :height="DOT_R * 2"
+        :stroke="row.lanes[row.col]?.color"
+        :stroke-width="LINE_W"
+        fill="var(--vscode-editor-background, #1e1e1e)"
+        rx="1"
+        class="merge-node"
+        @click.stop="toggleParents"
+      />
+      <circle
+        v-if="showAllParents"
+        :cx="laneX(row.col)"
+        :cy="ROW_H / 2"
+        :r="1.5"
+        :fill="row.lanes[row.col]?.color"
+        class="merge-node"
+        @click.stop="toggleParents"
+      />
+    </template>
     <rect
-      v-else-if="row.isMerge || row.isStash || row.isUncommitted"
+      v-else-if="row.isStash || row.isUncommitted"
       :x="laneX(row.col) - DOT_R"
       :y="ROW_H / 2 - DOT_R"
       :width="DOT_R * 2"
@@ -130,7 +165,6 @@ function crossLaneConnectorPath(row: GraphRow, ri: number, parentHash: string): 
       :stroke-width="LINE_W"
       fill="var(--vscode-editor-background, #1e1e1e)"
       rx="1"
-      :stroke-dasharray="row.isUncommitted ? '2,2' : undefined"
     />
     <rect
       v-else
@@ -149,5 +183,8 @@ function crossLaneConnectorPath(row: GraphRow, ri: number, parentHash: string): 
   flex-shrink: 0;
   align-self: stretch;
   overflow: visible;
+}
+.merge-node {
+  cursor: pointer;
 }
 </style>

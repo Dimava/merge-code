@@ -51,6 +51,10 @@ const props = defineProps<{
   detail?: CommitDetailData;
 }>();
 
+const emit = defineEmits<{
+  selectParent: [hash: string];
+}>();
+
 const expandedFiles = ref<Set<string>>(new Set());
 const commitMessageDraft = ref("");
 type Bucket = "staged" | "unstaged" | "untracked" | "combined";
@@ -116,8 +120,18 @@ const stagedChanges = computed(() => props.detail?.workingTreeChanges?.staged ??
 const unstagedChanges = computed(() => props.detail?.workingTreeChanges?.unstaged ?? []);
 const untrackedChanges = computed(() => props.detail?.workingTreeChanges?.untracked ?? []);
 const groupedBuckets = computed(() => [
-  { id: "unstaged" as const, title: "Unstaged", empty: "No unstaged files", files: unstagedChanges.value },
-  { id: "untracked" as const, title: "Untracked", empty: "No untracked files", files: untrackedChanges.value },
+  {
+    id: "unstaged" as const,
+    title: "Unstaged",
+    empty: "No unstaged files",
+    files: unstagedChanges.value,
+  },
+  {
+    id: "untracked" as const,
+    title: "Untracked",
+    empty: "No untracked files",
+    files: untrackedChanges.value,
+  },
   { id: "staged" as const, title: "Staged", empty: "No staged files", files: stagedChanges.value },
 ]);
 
@@ -134,6 +148,14 @@ function noopAction(_action: string, _bucket?: Bucket, _path?: string) {
 function onMessageInput(e: Event) {
   commitMessageDraft.value = (e.target as HTMLElement).innerText;
 }
+
+function shortHash(hash: string): string {
+  return hash.slice(0, 12);
+}
+
+function selectParent(hash: string) {
+  emit("selectParent", hash);
+}
 </script>
 
 <template>
@@ -149,21 +171,36 @@ function onMessageInput(e: Event) {
               contenteditable="true"
               spellcheck="true"
               @input="onMessageInput"
-              >{{ commitMessageDraft }}</div
             >
+              {{ commitMessageDraft }}
+            </div>
             <div v-else class="commit-message-readonly">
               {{ detail.body || "(no message)" }}
             </div>
             <div class="commit-actions">
-              <button class="inline-action commit-btn" @click.stop="noopAction('commit')">Commit</button>
+              <button
+                v-if="isUncommitted"
+                class="inline-action commit-btn"
+                @click.stop="noopAction('commit')"
+              >
+                Commit
+              </button>
             </div>
             <div class="meta-line">
-              {{ detail.authorName || "Unknown author" }}<template v-if="detail.authorEmail">
-                &lt;{{ detail.authorEmail }}&gt;
-              </template>
+              {{ detail.authorName || "Unknown author"
+              }}<template v-if="detail.authorEmail"> &lt;{{ detail.authorEmail }}&gt; </template>
             </div>
             <div v-if="formatDate(detail.authorDate)" class="meta-line muted">
               {{ formatDate(detail.authorDate) }}
+            </div>
+            <div v-if="!isUncommitted && detail.parents.length" class="meta-line muted">
+              Parent
+              <template v-for="(parent, i) in detail.parents" :key="parent">
+                <button class="hash-link" @click.stop="selectParent(parent)">
+                  {{ shortHash(parent) }}
+                </button>
+                <span v-if="i < detail.parents.length - 1" class="hash-sep">,</span>
+              </template>
             </div>
             <div v-if="!isUncommitted" class="meta-line mono muted">Commit {{ detail.hash }}</div>
           </div>
@@ -247,7 +284,9 @@ function onMessageInput(e: Event) {
                     </div>
                   </template>
                   <pre
-                    v-if="bucketHunks(f, g.id).length === 0 && g.id === 'untracked' && f.content != null"
+                    v-if="
+                      bucketHunks(f, g.id).length === 0 && g.id === 'untracked' && f.content != null
+                    "
                     class="file-content"
                     >{{ f.content }}</pre
                   >
@@ -282,8 +321,12 @@ function onMessageInput(e: Event) {
                   class="diff-line"
                   :class="line.type"
                 >
-                  <span class="line-no old">{{ line.type === "hunk" ? "" : (line.oldLine ?? "") }}</span>
-                  <span class="line-no new">{{ line.type === "hunk" ? "" : (line.newLine ?? "") }}</span>
+                  <span class="line-no old">{{
+                    line.type === "hunk" ? "" : (line.oldLine ?? "")
+                  }}</span>
+                  <span class="line-no new">{{
+                    line.type === "hunk" ? "" : (line.newLine ?? "")
+                  }}</span>
                   <span class="line-text">{{ line.text }}</span>
                   <span v-if="line.type === 'hunk'" class="hunk-actions">
                     <button
@@ -310,8 +353,12 @@ function onMessageInput(e: Event) {
                   class="diff-line"
                   :class="line.type"
                 >
-                  <span class="line-no old">{{ line.type === "hunk" ? "" : (line.oldLine ?? "") }}</span>
-                  <span class="line-no new">{{ line.type === "hunk" ? "" : (line.newLine ?? "") }}</span>
+                  <span class="line-no old">{{
+                    line.type === "hunk" ? "" : (line.oldLine ?? "")
+                  }}</span>
+                  <span class="line-no new">{{
+                    line.type === "hunk" ? "" : (line.newLine ?? "")
+                  }}</span>
                   <span class="line-text">{{ line.text }}</span>
                   <span v-if="line.type === 'hunk'" class="hunk-actions">
                     <button
@@ -362,15 +409,22 @@ function onMessageInput(e: Event) {
               </template>
               <pre
                 v-if="
-                  !(f.hunks?.combined?.length || f.hunks?.staged?.length || f.hunks?.unstaged?.length) &&
-                  f.content != null
+                  !(
+                    f.hunks?.combined?.length ||
+                    f.hunks?.staged?.length ||
+                    f.hunks?.unstaged?.length
+                  ) && f.content != null
                 "
                 class="file-content"
                 >{{ f.content }}</pre
               >
               <div
                 v-else-if="
-                  !(f.hunks?.combined?.length || f.hunks?.staged?.length || f.hunks?.unstaged?.length)
+                  !(
+                    f.hunks?.combined?.length ||
+                    f.hunks?.staged?.length ||
+                    f.hunks?.unstaged?.length
+                  )
                 "
                 class="group-empty"
               >
@@ -468,6 +522,23 @@ function onMessageInput(e: Event) {
 }
 .mono {
   font-family: var(--vscode-editor-font-family, monospace);
+}
+.hash-link {
+  border: 0;
+  background: transparent;
+  color: var(--vscode-textLink-foreground, #4ea1ff);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 6px;
+  font: inherit;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+.hash-link:hover {
+  color: var(--vscode-textLink-activeForeground, #6cb6ff);
+  text-decoration: underline;
+}
+.hash-sep {
+  margin-left: 2px;
 }
 .section-title {
   padding: 8px 12px 2px;

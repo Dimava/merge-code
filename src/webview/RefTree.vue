@@ -4,6 +4,7 @@ import { computed, ref as vueRef, watch } from "vue";
 export interface RefEntry {
   name: string;
   commit?: string;
+  date?: string;
   ahead?: number;
   behind?: number;
   isHead?: boolean;
@@ -206,7 +207,7 @@ const rows = computed(() => {
   <template v-for="row in rows" :key="row.key">
     <div
       class="tree-row"
-      :style="{ paddingLeft: row.depth * 16 + 12 + 'px' }"
+      :style="{ paddingLeft: row.depth * 14 + 8 + 'px' }"
       :class="{
         current: row.entry?.name === head,
         folder: row.isFolder,
@@ -219,6 +220,7 @@ const rows = computed(() => {
       >
       <span v-else class="chevron-spacer" />
       <span class="row-label">{{ row.label }}</span>
+      <span v-if="row.entry?.date" class="row-date">{{ row.entry.date }}</span>
       <span v-if="row.entry?.behind" class="badge">{{ row.entry.behind }}&darr;</span>
       <span v-if="row.entry?.ahead" class="badge">{{ row.entry.ahead }}&uarr;</span>
       <span class="row-actions">
@@ -258,6 +260,7 @@ const rows = computed(() => {
   font-weight: 400;
   height: 20px;
   font-size: 12px;
+  position: relative;
 }
 .tree-row:hover {
   background: var(--vscode-list-hoverBackground);
@@ -287,6 +290,12 @@ const rows = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.row-date {
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
 .badge {
   font-size: 10px;
   padding: 0 3px;
@@ -296,14 +305,18 @@ const rows = computed(() => {
   flex-shrink: 0;
 }
 .row-actions {
-  display: flex;
+  display: none;
   gap: 0;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s;
+  position: absolute;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+  align-items: center;
+  background: var(--vscode-list-hoverBackground);
+  padding-left: 6px;
 }
 .tree-row:hover .row-actions {
-  opacity: 1;
+  display: flex;
 }
 /* Always show if pin is active or eye is off */
 .pin.active,
@@ -313,7 +326,7 @@ const rows = computed(() => {
 /* If any action is always-visible, show the container */
 .row-actions:has(.pin.active),
 .row-actions:has(.eye.off) {
-  opacity: 1;
+  display: flex;
 }
 .eye {
   font-size: 12px;

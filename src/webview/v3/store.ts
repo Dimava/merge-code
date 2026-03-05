@@ -1,10 +1,12 @@
-import { shallowRef, ref, watch } from "vue";
+import { shallowRef, ref, computed, watch } from "vue";
 import { defineStore } from "pinia";
+import { useLocalStorage } from "@vueuse/core";
 import { createWebSocketClient } from "./client";
 import type { Router, RepoInfo, LocationsData, CommitEntry, CommitDetail, Filters } from "./plan";
 
 const emptyLocations: LocationsData = {
   head: "",
+  headHash: "",
   branches: [],
   remotes: [],
   tags: [],
@@ -25,7 +27,20 @@ function getInitialTheme(): "dark" | "light" {
 }
 
 export const useAppStore = defineStore("app", () => {
-  const repos = shallowRef<RepoInfo[]>([]);
+  const focusRequest = shallowRef<{ key: string } | null>(null);
+  function focusLocation(refKey: string) {
+    focusRequest.value = { key: refKey };
+  }
+
+  const defaultRepoInfo = shallowRef<RepoInfo | null>(null);
+  const extraRepos = useLocalStorage<RepoInfo[]>("mc-extra-repos", []);
+  const repos = computed<RepoInfo[]>(() => {
+    if (!defaultRepoInfo.value) return extraRepos.value;
+    return [
+      defaultRepoInfo.value,
+      ...extraRepos.value.filter((r) => r.id !== defaultRepoInfo.value!.id),
+    ];
+  });
   const activeRepo = ref<string | null>(null);
   const locations = shallowRef<LocationsData>(emptyLocations);
   const commits = shallowRef<CommitEntry[]>([]);
@@ -61,10 +76,33 @@ export const useAppStore = defineStore("app", () => {
 
   async function loadRepos() {
     if (!api) return;
-    repos.value = await api.queries.getRepos();
-    if (repos.value.length > 0 && !activeRepo.value) {
+    const [defaultRepo] = await api.queries.getRepos();
+    if (defaultRepo) defaultRepoInfo.value = defaultRepo;
+    if (!activeRepo.value && repos.value.length > 0) {
       activeRepo.value = repos.value[0]!.id;
       await refresh();
+    }
+  }
+
+  async function addRepo() {
+    if (!api) return;
+    const input = prompt("Enter repo path:");
+    if (!input) return;
+    const info = await api.queries.checkRepo({ path: input });
+    if (!info) {
+      alert(`Not a valid git repo: ${input}`);
+      return;
+    }
+    if (repos.value.some((r) => r.id === info.id)) return;
+    extraRepos.value = [...extraRepos.value, info];
+  }
+
+  function removeRepo(id: string) {
+    if (id === defaultRepoInfo.value?.id) return;
+    extraRepos.value = extraRepos.value.filter((r) => r.id !== id);
+    if (activeRepo.value === id) {
+      activeRepo.value = repos.value[0]?.id ?? null;
+      void refresh();
     }
   }
 
@@ -129,9 +167,28 @@ export const useAppStore = defineStore("app", () => {
     return filters.value.hiddenRefs.has(refKey);
   }
 
+  const selectedCommit = computed(() =>
+    selectedHash.value ? commits.value.find((c) => c.hash === selectedHash.value) ?? null : null,
+  );
+
+  function isRefSelected(refKey: string) {
+    const c = selectedCommit.value;
+    if (!c) return false;
+    const [type, name] = refKey.split(":") as [string, string];
+    return c.deco.some((d) => d.type === type && d.name === name);
+  }
+
+  function isStashSelected(index: number) {
+    const c = selectedCommit.value;
+    if (!c?.isStash) return false;
+    const s = locations.value.stashes.find((st) => st.index === index);
+    return s ? s.hash === c.hash : false;
+  }
+
   return {
     repos,
     activeRepo,
+    defaultRepoInfo,
     locations,
     commits,
     selectedHash,
@@ -141,12 +198,18 @@ export const useAppStore = defineStore("app", () => {
     connect,
     refresh,
     switchRepo,
+    addRepo,
+    removeRepo,
     selectCommit,
     toggleTheme,
     togglePin,
     isPinned,
     toggleHide,
     isHidden,
+    focusRequest,
+    focusLocation,
+    isRefSelected,
+    isStashSelected,
     timeSorted,
     isTimeSorted,
     toggleTimeSort,

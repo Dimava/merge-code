@@ -21,7 +21,13 @@ const open = ref(props.defaultOpen);
 </script>
 
 <template>
-  <div :class="['tree-section', { nested }, refKey && store.isHidden(refKey) ? 'hidden' : '']">
+  <div
+    :class="[
+      'tree-section',
+      { nested, expand: open && !nested },
+      refKey && store.isHidden(refKey) ? 'hidden' : '',
+    ]"
+  >
     <div
       class="tree-header"
       :style="nested ? { paddingLeft: depth * 16 + 12 + 'px' } : undefined"
@@ -76,7 +82,9 @@ const open = ref(props.defaultOpen);
         </button>
       </template>
     </div>
-    <slot name="pinned" />
+    <div class="tree-pinned">
+      <slot name="pinned" />
+    </div>
     <div v-if="open" class="tree-children">
       <slot />
     </div>
@@ -86,6 +94,26 @@ const open = ref(props.defaultOpen);
 <style scoped>
 .tree-section {
   user-select: none;
+  flex-shrink: 0;
+}
+
+.tree-section.expand {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 22px;
+  overflow: hidden;
+}
+
+.tree-section.expand > .tree-children {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.tree-pinned {
+  flex-shrink: 0;
 }
 .tree-header {
   display: flex;

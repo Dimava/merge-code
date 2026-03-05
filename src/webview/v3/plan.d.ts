@@ -17,6 +17,7 @@ export interface RepoInfo {
 
 export interface Branch {
   name: string;
+  hash: string;
   ahead: number; // 0 if not tracking
   behind: number;
   tracking: string | null; // "origin/main"
@@ -26,6 +27,7 @@ export interface Branch {
 
 export interface RemoteBranch {
   name: string;
+  hash: string;
   date: string; // ISO 8601 (for sorting)
   dateRel: string; // relative
 }
@@ -38,6 +40,7 @@ export interface RemoteGroup {
 
 export interface Tag {
   name: string;
+  hash: string;
   date: string; // ISO 8601 (for sorting)
   dateRel: string; // relative
 }
@@ -45,10 +48,12 @@ export interface Tag {
 export interface Stash {
   index: number;
   label: string;
+  hash: string;
 }
 
 export interface LocationsData {
   head: string;
+  headHash: string; // commit hash at HEAD (for detached or branch)
   branches: Branch[];
   remotes: RemoteGroup[];
   tags: Tag[];
@@ -192,6 +197,7 @@ export interface AppState {
 
 export interface RouterQueries {
   getRepos(): Promise<RepoInfo[]>;
+  checkRepo(args: { path: string }): Promise<RepoInfo | null>;
   getLocations(args: { repo: string }): Promise<LocationsData>;
   getCommits(args: { repo: string; filters: Filters }): Promise<CommitEntry[]>;
   getCommitDetail(args: { repo: string; hash: string }): Promise<CommitDetail>;

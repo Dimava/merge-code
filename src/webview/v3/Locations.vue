@@ -17,11 +17,14 @@ const branchesByTime = computed(() =>
   [...branchItems.value].sort((a, b) => (a.date < b.date ? 1 : -1)),
 );
 
-function normalizeBranch(b: string | { name: string; date: string }) {
-  return typeof b === "string" ? { name: b, date: "" } : b;
+function normalizeBranch(b: string | { name: string; date: string; dateRel?: string; hash?: string }) {
+  return typeof b === "string" ? { name: b, date: "", dateRel: "", hash: "" } : b;
 }
 
-function remoteItems(remoteName: string, branches: (string | { name: string; date: string })[]) {
+function remoteItems(
+  remoteName: string,
+  branches: (string | { name: string; date: string; dateRel?: string; hash?: string })[],
+) {
   return branches.map((b) => {
     const n = normalizeBranch(b);
     return { ...n, _refKey: "remote:" + remoteName + "/" + n.name };
@@ -30,7 +33,7 @@ function remoteItems(remoteName: string, branches: (string | { name: string; dat
 
 function remoteItemsByTime(
   remoteName: string,
-  branches: (string | { name: string; date: string })[],
+  branches: (string | { name: string; date: string; dateRel?: string; hash?: string })[],
 ) {
   return [...remoteItems(remoteName, branches)].sort((a, b) => (a.date < b.date ? 1 : -1));
 }
@@ -55,6 +58,7 @@ function displayDate(iso: string, rel: string): string {
       v-if="store.locations.head"
       :ref-key="'branch:' + store.locations.head"
       :name="store.locations.head"
+      :hash="store.locations.headHash"
       class="head-row"
     >
       <template #before><span class="head-dot">●</span></template>
@@ -72,10 +76,11 @@ function displayDate(iso: string, rel: string): string {
           :key="'pin-' + b._refKey"
           :ref-key="b._refKey"
           :name="b.name"
+          :hash="b.hash"
         />
       </template>
       <template v-if="store.isTimeSorted('branches')">
-        <RefItem v-for="b in branchesByTime" :key="b._refKey" :ref-key="b._refKey" :name="b.name">
+        <RefItem v-for="b in branchesByTime" :key="b._refKey" :ref-key="b._refKey" :name="b.name" :hash="b.hash">
           <span v-if="b.ahead || b.behind" class="badge">
             <span v-if="b.ahead" class="ahead">{{ b.ahead }}&#8593;</span>
             <span v-if="b.behind" class="behind">{{ b.behind }}&#8595;</span>
@@ -85,7 +90,7 @@ function displayDate(iso: string, rel: string): string {
       </template>
       <BranchFolder v-else :items="branchItems">
         <template #default="{ item: b, depth }">
-          <RefItem :ref-key="b._refKey" :name="b.name" :depth="depth">
+          <RefItem :ref-key="b._refKey" :name="b.name" :hash="b.hash" :depth="depth">
             <span v-if="b.ahead || b.behind" class="badge">
               <span v-if="b.ahead" class="ahead">{{ b.ahead }}&#8593;</span>
               <span v-if="b.behind" class="behind">{{ b.behind }}&#8595;</span>
@@ -116,45 +121,62 @@ function displayDate(iso: string, rel: string): string {
             :key="item._refKey"
             :ref-key="item._refKey"
             :name="item.name"
+            :hash="item.hash"
           >
-            <span class="date">{{ displayDate(item.date, item.dateRel) }}</span>
+            <span class="date">{{ displayDate(item.date, item.dateRel ?? "") }}</span>
           </RefItem>
         </template>
         <BranchFolder v-else :items="remoteItems(r.name, r.branches)" :depth="1">
           <template #default="{ item, depth }">
-            <RefItem :ref-key="item._refKey" :name="item.name" :depth="depth" />
+            <RefItem :ref-key="item._refKey" :name="item.name" :hash="item.hash" :depth="depth" />
           </template>
         </BranchFolder>
       </TreeSection>
     </TreeSection>
 
     <TreeSection label="Tags" :count="store.locations.tags.length" sort-key="tags">
-      <div v-for="t in store.locations.tags" :key="t.name" class="tree-item">
+      <div
+        v-for="t in store.locations.tags"
+        :key="t.name"
+        :class="['tree-item', { selected: store.isRefSelected('tag:' + t.name) }]"
+        @click="store.selectCommit(t.hash)"
+      >
         <span class="item-name">{{ t.name }}</span>
         <span v-if="t.date" class="date">{{ displayDate(t.date, t.dateRel) }}</span>
       </div>
     </TreeSection>
 
     <TreeSection label="Stashes" :count="store.locations.stashes.length">
-      <div v-for="s in store.locations.stashes" :key="s.index" class="tree-item">
+      <div
+        v-for="s in store.locations.stashes"
+        :key="s.index"
+        :class="['tree-item', { selected: store.isStashSelected(s.index) }]"
+        @click="store.selectCommit(s.hash)"
+      >
         <span class="item-name">{{ s.label }}</span>
       </div>
     </TreeSection>
+    <div class="locations-spacer" />
   </div>
 </template>
 
 <style scoped>
 .locations {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   padding-top: 4px;
-  scrollbar-gutter: stable;
 }
 
 .head-row {
   font-weight: 600;
   margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.locations-spacer {
+  flex: 1 0 0;
 }
 
 .head-dot {
@@ -175,8 +197,13 @@ function displayDate(iso: string, rel: string): string {
   transition: background 0.1s;
 }
 
-.tree-item:hover {
+.tree-item:hover,
+.tree-item.selected {
   background: var(--bg-hover);
+}
+
+.tree-item.selected {
+  background: var(--bg-selected);
 }
 
 .item-name {

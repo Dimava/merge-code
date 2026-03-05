@@ -7,14 +7,21 @@ const store = useAppStore();
 <template>
   <div class="tab-bar">
     <div class="tabs-scroll">
-      <button
+      <div
         v-for="r in store.repos"
         :key="r.id"
         :class="['tab', { active: r.id === store.activeRepo }]"
         @click="store.switchRepo(r.id)"
       >
         {{ r.name }}
-      </button>
+        <button
+          v-if="r.id !== store.defaultRepoInfo?.id"
+          class="tab-close"
+          @click.stop="store.removeRepo(r.id)"
+          title="Remove repo"
+        >×</button>
+      </div>
+      <button class="tab-add" @click="store.addRepo()" title="Add repo">+</button>
     </div>
     <button
       class="theme-toggle"
@@ -78,7 +85,10 @@ const store = useAppStore();
 }
 
 .tab {
-  padding: 5px 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px 5px 14px;
   font-size: 12px;
   background: none;
   border: none;
@@ -100,6 +110,56 @@ const store = useAppStore();
 .tab.active {
   color: var(--fg);
   border-bottom-color: var(--accent);
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+
+.tab:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 14px 5px 10px;
+  font-size: 18px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.tab-add:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
 }
 
 .theme-toggle {

@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { resolve, join, normalize, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -24,7 +26,6 @@ import type {
 // ── Config ──
 
 const PORT = 3003;
-const reposFile = resolve(import.meta.dir, "../../..", ".local/repos.txt");
 const cliArgs = process.argv.slice(2);
 const shouldOpenBrowser = cliArgs.includes("--open");
 const repoArg = cliArgs.find((arg) => !arg.startsWith("-"));
@@ -76,43 +77,47 @@ async function gitLinesQuiet(repo: string, ...args: string[]): Promise<string[]>
 // ── Router handlers ──
 
 async function getRepos(): Promise<RepoInfo[]> {
-  const repos: RepoInfo[] = [
-    { id: normalize(defaultRepo), path: defaultRepo, name: basename(defaultRepo) },
-  ];
+  return [{ id: normalize(defaultRepo), path: defaultRepo, name: basename(defaultRepo) }];
+}
+
+async function checkRepo({ path: p }: { path: string }): Promise<RepoInfo | null> {
   try {
-    const text = await Bun.file(reposFile).text();
-    for (const line of text.split("\n")) {
-      const p = line.trim();
-      if (!p || p.startsWith("#")) continue;
-      const resolved = resolve(p);
-      if (repos.some((r) => r.id === normalize(resolved))) continue;
-      if (!existsSync(join(resolved, ".git"))) continue;
-      repos.push({ id: normalize(resolved), path: resolved, name: basename(resolved) });
-    }
-  } catch {}
-  return repos;
+    const resolved = resolve(p);
+    if (!existsSync(join(resolved, ".git"))) return null;
+    return { id: normalize(resolved), path: resolved, name: basename(resolved) };
+  } catch {
+    return null;
+  }
 }
 
 async function getLocations(repo: string): Promise<LocationsData> {
-  const [head, branches, remotes, tags, stashes] = await Promise.all([
+  const [head, headHash, branches, remotes, tags, stashes] = await Promise.all([
     gitQuiet(repo, "rev-parse", "--abbrev-ref", "HEAD"),
+    gitQuiet(repo, "rev-parse", "HEAD"),
     loadBranches(repo),
     loadRemotes(repo),
     loadTags(repo),
     loadStashes(repo),
   ]);
-  return { head: head || "(detached)", branches, remotes, tags, stashes };
+  return {
+    head: head || "(detached)",
+    headHash: headHash || "",
+    branches,
+    remotes,
+    tags,
+    stashes,
+  };
 }
 
 async function loadBranches(repo: string): Promise<Branch[]> {
   const lines = await gitLinesQuiet(
     repo,
     "for-each-ref",
-    "--format=%(refname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
+    "--format=%(refname:short)\t%(objectname)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
     "refs/heads/",
   );
   return lines.map((line) => {
-    const [name, upstream, track, date, dateRel] = line.split("\t");
+    const [name, hash, upstream, track, date, dateRel] = line.split("\t");
     let ahead = 0;
     let behind = 0;
     if (track) {
@@ -121,7 +126,15 @@ async function loadBranches(repo: string): Promise<Branch[]> {
       if (a) ahead = Number(a[1]);
       if (b) behind = Number(b[1]);
     }
-    return { name: name!, ahead, behind, tracking: upstream || null, date: date ?? "", dateRel: dateRel ?? "" };
+    return {
+      name: name!,
+      hash: hash ?? "",
+      ahead,
+      behind,
+      tracking: upstream || null,
+      date: date ?? "",
+      dateRel: dateRel ?? "",
+    };
   });
 }
 
@@ -133,14 +146,19 @@ async function loadRemotes(repo: string): Promise<RemoteGroup[]> {
       const refLines = await gitLinesQuiet(
         repo,
         "for-each-ref",
-        "--format=%(refname:short)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
+        "--format=%(refname:short)\t%(objectname)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
         `refs/remotes/${name}/`,
       );
       const branches = refLines
         .filter((l) => !l.includes("/HEAD"))
         .map((l) => {
-          const [ref, date, dateRel] = l.split("\t");
-          return { name: ref!.replace(`${name}/`, ""), date: date ?? "", dateRel: dateRel ?? "" };
+          const [ref, hash, date, dateRel] = l.split("\t");
+          return {
+            name: ref!.replace(`${name}/`, ""),
+            hash: hash ?? "",
+            date: date ?? "",
+            dateRel: dateRel ?? "",
+          };
         });
       return { name, url, branches };
     }),
@@ -151,19 +169,22 @@ async function loadTags(repo: string): Promise<Tag[]> {
   const lines = await gitLinesQuiet(
     repo,
     "for-each-ref",
-    "--format=%(refname:short)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
+    "--format=%(refname:short)\t%(objectname)\t%(creatordate:iso-strict)\t%(creatordate:relative)",
     "--sort=-creatordate",
     "refs/tags/",
   );
   return lines.map((l) => {
-    const [name, date, dateRel] = l.split("\t");
-    return { name: name!, date: date ?? "", dateRel: dateRel ?? "" };
+    const [name, hash, date, dateRel] = l.split("\t");
+    return { name: name!, hash: hash ?? "", date: date ?? "", dateRel: dateRel ?? "" };
   });
 }
 
 async function loadStashes(repo: string): Promise<Stash[]> {
-  const lines = await gitLinesQuiet(repo, "stash", "list", "--format=%gs");
-  return lines.map((label, index) => ({ index, label }));
+  const lines = await gitLinesQuiet(repo, "stash", "list", "--format=%H\t%gd\t%gs");
+  return lines.map((line, index) => {
+    const [hash, , label] = line.split("\t");
+    return { index, label: label ?? "", hash: hash ?? "" };
+  });
 }
 
 async function getCommits(repo: string, _filters?: Filters): Promise<CommitEntry[]> {
@@ -545,6 +566,7 @@ type RouterHandlers = { [K in keyof RouterMethods]: HandlerOf<K> };
 
 const handlers: RouterHandlers = {
   getRepos: () => getRepos(),
+  checkRepo: (args) => checkRepo(args),
   getLocations: ({ repo }) => getLocations(repo),
   getCommits: ({ repo, filters }) => getCommits(repo, filters),
   getCommitDetail: ({ repo, hash }) => getCommitDetail(repo, hash),

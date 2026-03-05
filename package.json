@@ -3,6 +3,9 @@
   "displayName": "Merge Code",
   "version": "0.0.1",
   "description": "Sublime Merge integration for VS Code",
+  "bin": {
+    "merge-code": "./src/webview/v3/server.ts"
+  },
   "categories": [
     "SCM Providers"
   ],
@@ -15,10 +18,14 @@
     "compile": "tsgo -p ./ && bun run build:webview",
     "dev": "bun run compile && bun run package && cursor --install-extension merge-code.vsix --force",
     "dev:vscode": "tsgo -p ./ && bun run build:webview && code --extensionDevelopmentPath=D:/tools/merge-code D:/tools/merge-code",
+    "dev:v3": "bun --hot src/webview/v3/server.ts --open",
+    "v3": "bun src/webview/v3/server.ts --open",
     "watch": "tsgo -watch -p ./",
     "package": "vsce package --out merge-code.vsix --allow-missing-repository --allow-star-activation"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@vueuse/core": "^14.2.1"
+  },
   "devDependencies": {
     "@git-diff-view/core": "^0.1.1",
     "@git-diff-view/vue": "^0.1.1",

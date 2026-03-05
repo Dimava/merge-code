@@ -1,19 +1,34 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { useAppStore } from "./store";
 
 const props = defineProps<{
   refKey: string;
   name: string;
+  hash?: string;
   depth?: number;
 }>();
 
 const store = useAppStore();
+const el = ref<HTMLElement>();
+
+watch(
+  () => store.focusRequest,
+  (req) => {
+    if (req?.key === props.refKey && el.value) {
+      el.value.scrollIntoView({ block: "nearest" });
+    }
+  },
+  { flush: "post" },
+);
 </script>
 
 <template>
   <div
-    :class="['ref-item', { hidden: store.isHidden(refKey) }]"
+    ref="el"
+    :class="['ref-item', { hidden: store.isHidden(refKey), selected: store.isRefSelected(refKey) }]"
     :style="depth != null ? { paddingLeft: depth * 16 + 30 + 'px' } : undefined"
+    @click="hash ? () => void store.selectCommit(hash) : undefined"
   >
     <slot name="before" />
     <span class="item-name">{{ name }}</span>
@@ -64,6 +79,10 @@ const store = useAppStore();
 
 .ref-item:hover {
   background: var(--bg-hover);
+}
+
+.ref-item.selected {
+  background: var(--bg-selected);
 }
 
 .ref-item.hidden:not(:hover) {

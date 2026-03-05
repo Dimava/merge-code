@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useAppStore } from "./store";
 import { layoutGraph, laneColor } from "./graphLayout";
 import type { GraphRow } from "./plan";
@@ -15,7 +15,19 @@ const rows = computed(() => layout.value.rows);
 const maxGraphWidth = computed(() => layout.value.width * LANE_W);
 const svgHeight = computed(() => rows.value.length * ROW_H);
 
+const listEl = ref<HTMLElement>();
 const hoveredChain = ref<Set<number> | null>(null);
+
+watch(
+  () => store.selectedHash,
+  (hash) => {
+    if (!hash || !listEl.value) return;
+    listEl.value
+      .querySelector<HTMLElement>(`[data-hash="${CSS.escape(hash)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  },
+  { flush: "post" },
+);
 
 function rowGraphW(row: GraphRow): number {
   return row.width * LANE_W;
@@ -69,7 +81,7 @@ function decoLaneColor(row: GraphRow): string {
 </script>
 
 <template>
-  <div class="commit-list" @mouseleave="onRowLeave">
+  <div class="commit-list" ref="listEl" @mouseleave="onRowLeave">
     <div class="scroll-area">
       <CommitGraphSvg
         :rows="rows"
@@ -83,6 +95,7 @@ function decoLaneColor(row: GraphRow): string {
         <div
           v-for="row in rows"
           :key="row.commit.hash"
+          :data-hash="row.commit.hash"
           :class="[
             'row',
             {
@@ -101,12 +114,13 @@ function decoLaneColor(row: GraphRow): string {
           </div>
           <div class="row-line2">
             <span class="author">{{ row.commit.author }}</span>
-            <span v-if="row.commit.deco.length" class="deco-list right">
+            <span v-if="row.commit.deco.length" class="badge-list right">
               <span
                 v-for="d in row.commit.deco"
                 :key="d.name"
-                :class="['deco', d.type, { head: d.isHead }]"
+                :class="['badge', d.type, { head: d.isHead }]"
                 :style="{ borderLeftColor: decoLaneColor(row), color: decoLaneColor(row) }"
+                @click.stop="store.focusLocation(d.type + ':' + d.name)"
                 ><span v-if="d.isHead" class="head-dot">●</span>{{ d.name }}</span
               >
             </span>
@@ -188,19 +202,19 @@ function decoLaneColor(row: GraphRow): string {
   color: var(--fg-dim);
 }
 
-.deco-list {
+.badge-list {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.deco-list.right {
+.badge-list.right {
   margin-left: auto;
   min-width: 70px;
   justify-content: flex-end;
 }
 
-.deco {
+.badge {
   font-size: 10px;
   padding: 0 4px 0 3px;
   line-height: 15px;
@@ -210,17 +224,21 @@ function decoLaneColor(row: GraphRow): string {
   background: color-mix(in srgb, currentColor 8%, transparent);
   border-left: 3px solid;
   border-radius: 2.7px;
+  cursor: pointer;
 }
 
-.deco.head {
+.badge:hover {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.badge.head {
   font-weight: 600;
 }
 
 .head-dot {
   color: #3fb950;
-  margin-right: 1px;
   font-size: 8px;
-  vertical-align: middle;
+  margin-right: 4px;
 }
 
 .author {

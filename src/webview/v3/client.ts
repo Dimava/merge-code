@@ -61,6 +61,7 @@ export function createWebSocketClient(url: string): Router & { close(): void } {
 
   const queries = proxyGroup<RouterQueries>([
     "getRepos",
+    "checkRepo",
     "getLocations",
     "getCommits",
     "getCommitDetail",

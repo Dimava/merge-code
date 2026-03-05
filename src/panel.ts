@@ -116,6 +116,8 @@ export class MergePanel {
         void this.handleAction(msg.action, msg.context);
       } else if (msg.type === "selectCommit") {
         void this.sendCommitDetail(msg.hash);
+      } else if (msg.type === "focusCommit") {
+        void this.focusCommit(msg.hash);
       } else if (msg.type === "setHideConfig") {
         const categories =
           msg.hide?.categories && typeof msg.hide.categories === "object"
@@ -322,13 +324,13 @@ export class MergePanel {
   private async loadTags() {
     const lines = await this.gitLines(
       "for-each-ref",
-      "--format=%(refname:short)\t%(objectname:short)",
+      "--format=%(refname:short)\t%(objectname:short)\t%(creatordate:relative)",
       "--sort=-creatordate",
       "refs/tags/",
     );
     return lines.map((l) => {
-      const [name, commit] = l.split("\t");
-      return { name: name!, commit };
+      const [name, commit, date] = l.split("\t");
+      return { name: name!, commit, date };
     });
   }
 
@@ -358,7 +360,7 @@ export class MergePanel {
     }
   }
 
-  private async sendCommits() {
+  private async sendCommits(focusHash?: string) {
     if (!this.repo) return;
     try {
       const excludeRefs = this.buildExcludeRefs();
@@ -386,23 +388,61 @@ export class MergePanel {
       const statusLines = statusOut.split("\n").filter((l) => l.length > 0);
       const hasUncommitted = statusLines.length > 0;
       const untrackedCount = statusLines.filter((l) => l.startsWith("?? ")).length;
-      const stagedCount = statusLines.filter((l) => !l.startsWith("?? ") && l[0] && l[0] !== " ").length;
+      const stagedCount = statusLines.filter(
+        (l) => !l.startsWith("?? ") && l[0] && l[0] !== " ",
+      ).length;
       const unstagedTrackedCount = statusLines.filter(
         (l) => !l.startsWith("?? ") && l[1] && l[1] !== " ",
       ).length;
       const unstagedCount = unstagedTrackedCount + untrackedCount;
 
-      const lines = await this.gitLines(
+      const baseLogArgs = [
         "log",
         ...excludeArgs,
         "--all",
         ...stashHashes,
         "--topo-order",
-        "--max-count=200",
         "--format=%H\t%P\t%s\t%an\t%ar\t%D",
-      );
+      ];
+      let lines: string[];
+      if (focusHash) {
+        const focusRadius = 120;
+        const focusWindowSize = focusRadius * 2 + 1;
+        const prefetchLimit = 3000;
+        const prefetchLines = await this.gitLines(
+          ...baseLogArgs,
+          "--max-count",
+          String(prefetchLimit),
+        );
+        let sourceLines = prefetchLines;
+        let idx = sourceLines.findIndex((l) => l.startsWith(`${focusHash}\t`));
+        if (idx < 0) {
+          // Old commits can be outside the prefetch cap; retry against full history for deterministic focusing.
+          sourceLines = await this.gitLines(...baseLogArgs);
+          idx = sourceLines.findIndex((l) => l.startsWith(`${focusHash}\t`));
+        }
+        if (idx >= 0) {
+          const start = Math.max(0, idx - focusRadius);
+          lines = sourceLines.slice(start, start + focusWindowSize);
+        } else {
+          // Keep UI and detail pane in sync even if commit is not reachable from --all under current filters.
+          const focusLine = await this.git(
+            "show",
+            "-s",
+            "--format=%H\t%P\t%s\t%an\t%ar\t%D",
+            focusHash,
+          ).catch(() => "");
+          if (focusLine) {
+            lines = [focusLine, ...prefetchLines.slice(0, Math.max(0, focusWindowSize - 1))];
+          } else {
+            lines = prefetchLines.slice(0, focusWindowSize);
+          }
+        }
+      } else {
+        lines = await this.gitLines(...baseLogArgs, "--max-count=200");
+      }
       log.info(
-        `sendCommits:gitLog rows=${lines.length} hasUncommitted=${hasUncommitted} head=${headHash || "(none)"}`,
+        `sendCommits:gitLog rows=${lines.length} focus=${focusHash ?? "(none)"} hasUncommitted=${hasUncommitted} head=${headHash || "(none)"}`,
       );
       const stashSet = new Set(stashHashes);
       const commits: {
@@ -463,7 +503,7 @@ export class MergePanel {
         );
       }
 
-      const payload = { type: "commits", commits: filtered };
+      const payload = { type: "commits", commits: filtered, focusHash };
       const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
       const posted = await this.panel.webview.postMessage(payload);
       log.info(
@@ -475,6 +515,18 @@ export class MergePanel {
     } catch (err) {
       const message = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
       log.error(`sendCommits failed: ${message}`);
+    }
+  }
+
+  private async focusCommit(shortHash: string) {
+    if (!this.repo) return;
+    try {
+      const fullHash = await this.git("rev-parse", shortHash);
+      await this.sendCommits(fullHash);
+      await this.sendCommitDetail(fullHash);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn(`focusCommit failed for ${shortHash}: ${message}`);
     }
   }
 
@@ -496,13 +548,29 @@ export class MergePanel {
         ),
         stashRef
           ? this.git("stash", "show", "--include-untracked", "--numstat", stashRef)
-          : this.git("diff-tree", "--no-commit-id", "-r", "--numstat", "-m", "--first-parent", hash),
+          : this.git(
+              "diff-tree",
+              "--no-commit-id",
+              "-r",
+              "--numstat",
+              "-m",
+              "--first-parent",
+              hash,
+            ),
         stashRef
           ? this.git("stash", "show", "--include-untracked", "-p", "-U3", stashRef)
           : this.git("diff-tree", "--no-commit-id", "-p", "-U3", "-m", "--first-parent", hash),
         stashRef
           ? this.git("stash", "show", "--include-untracked", "--name-status", stashRef)
-          : this.git("diff-tree", "--no-commit-id", "-r", "--name-status", "-m", "--first-parent", hash),
+          : this.git(
+              "diff-tree",
+              "--no-commit-id",
+              "-r",
+              "--name-status",
+              "-m",
+              "--first-parent",
+              hash,
+            ),
       ]);
       const parts = info.split("\t");
       const fullHash = parts[0]!;
@@ -551,8 +619,16 @@ export class MergePanel {
   private async sendUncommittedDetail() {
     if (!this.repo) return;
     try {
-      const [headHash, diffStat, diffRaw, statusOut, stagedStat, unstagedStat, stagedRaw, unstagedRaw] =
-        await Promise.all([
+      const [
+        headHash,
+        diffStat,
+        diffRaw,
+        statusOut,
+        stagedStat,
+        unstagedStat,
+        stagedRaw,
+        unstagedRaw,
+      ] = await Promise.all([
         this.git("rev-parse", "HEAD").catch(() => ""),
         this.git("diff", "--numstat", "HEAD").catch(() => ""),
         this.git("diff", "-U3", "HEAD").catch(() => ""),
@@ -583,7 +659,12 @@ export class MergePanel {
         .filter((l) => l.startsWith("?? "))
         .map((l) => l.slice(3).trim())
         .filter((p) => p.length > 0);
-      const untrackedFiles = untrackedPaths.map((path) => ({ path, added: 0, deleted: 0, mode: "??" }));
+      const untrackedFiles = untrackedPaths.map((path) => ({
+        path,
+        added: 0,
+        deleted: 0,
+        mode: "??",
+      }));
       const existing = new Set(files.map((f) => f.path));
       for (const path of untrackedPaths) {
         if (!existing.has(path)) {

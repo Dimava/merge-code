@@ -22,31 +22,32 @@ import type {
 // ── Config ──
 
 const PORT = 3003;
-const repoPath = resolve(process.argv[2] || ".");
+const reposFile = resolve(import.meta.dir, "../../..", ".local/repos.txt");
+const defaultRepo = resolve(process.argv[2] || ".");
 
 // ── Git helpers ──
 
-async function git(...args: string[]): Promise<string> {
-  const result = await $`git -C ${repoPath} ${args}`.text();
+async function git(repo: string, ...args: string[]): Promise<string> {
+  const result = await $`git -C ${repo} ${args}`.text();
   return result.trim();
 }
 
-async function gitLines(...args: string[]): Promise<string[]> {
-  const out = await git(...args);
+async function gitLines(repo: string, ...args: string[]): Promise<string[]> {
+  const out = await git(repo, ...args);
   if (!out) return [];
   return out.split("\n");
 }
 
-async function gitQuiet(...args: string[]): Promise<string> {
+async function gitQuiet(repo: string, ...args: string[]): Promise<string> {
   try {
-    return await git(...args);
+    return await git(repo, ...args);
   } catch {
     return "";
   }
 }
 
-async function gitLinesQuiet(...args: string[]): Promise<string[]> {
-  const out = await gitQuiet(...args);
+async function gitLinesQuiet(repo: string, ...args: string[]): Promise<string[]> {
+  const out = await gitQuiet(repo, ...args);
   if (!out) return [];
   return out.split("\n");
 }
@@ -54,23 +55,36 @@ async function gitLinesQuiet(...args: string[]): Promise<string[]> {
 // ── Router handlers ──
 
 async function getRepos(): Promise<RepoInfo[]> {
-  const id = normalize(repoPath);
-  return [{ id, path: repoPath, name: basename(repoPath) }];
+  const repos: RepoInfo[] = [
+    { id: normalize(defaultRepo), path: defaultRepo, name: basename(defaultRepo) },
+  ];
+  try {
+    const text = await Bun.file(reposFile).text();
+    for (const line of text.split("\n")) {
+      const p = line.trim();
+      if (!p || p.startsWith("#")) continue;
+      const resolved = resolve(p);
+      if (repos.some((r) => r.id === normalize(resolved))) continue;
+      repos.push({ id: normalize(resolved), path: resolved, name: basename(resolved) });
+    }
+  } catch {}
+  return repos;
 }
 
-async function getLocations(): Promise<LocationsData> {
+async function getLocations(repo: string): Promise<LocationsData> {
   const [head, branches, remotes, tags, stashes] = await Promise.all([
-    gitQuiet("rev-parse", "--abbrev-ref", "HEAD"),
-    loadBranches(),
-    loadRemotes(),
-    loadTags(),
-    loadStashes(),
+    gitQuiet(repo, "rev-parse", "--abbrev-ref", "HEAD"),
+    loadBranches(repo),
+    loadRemotes(repo),
+    loadTags(repo),
+    loadStashes(repo),
   ]);
   return { head: head || "(detached)", branches, remotes, tags, stashes };
 }
 
-async function loadBranches(): Promise<Branch[]> {
+async function loadBranches(repo: string): Promise<Branch[]> {
   const lines = await gitLinesQuiet(
+    repo,
     "for-each-ref",
     "--format=%(refname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(objectname:short)",
     "refs/heads/",
@@ -89,12 +103,13 @@ async function loadBranches(): Promise<Branch[]> {
   });
 }
 
-async function loadRemotes(): Promise<RemoteGroup[]> {
-  const remoteNames = await gitLinesQuiet("remote");
+async function loadRemotes(repo: string): Promise<RemoteGroup[]> {
+  const remoteNames = await gitLinesQuiet(repo, "remote");
   return Promise.all(
     remoteNames.map(async (name) => {
-      const url = await gitQuiet("remote", "get-url", name);
+      const url = await gitQuiet(repo, "remote", "get-url", name);
       const refLines = await gitLinesQuiet(
+        repo,
         "for-each-ref",
         "--format=%(refname:short)",
         `refs/remotes/${name}/`,
@@ -107,8 +122,9 @@ async function loadRemotes(): Promise<RemoteGroup[]> {
   );
 }
 
-async function loadTags(): Promise<Tag[]> {
+async function loadTags(repo: string): Promise<Tag[]> {
   const lines = await gitLinesQuiet(
+    repo,
     "for-each-ref",
     "--format=%(refname:short)\t%(creatordate:relative)",
     "--sort=-creatordate",
@@ -120,25 +136,26 @@ async function loadTags(): Promise<Tag[]> {
   });
 }
 
-async function loadStashes(): Promise<Stash[]> {
-  const lines = await gitLinesQuiet("stash", "list", "--format=%gs");
+async function loadStashes(repo: string): Promise<Stash[]> {
+  const lines = await gitLinesQuiet(repo, "stash", "list", "--format=%gs");
   return lines.map((label, index) => ({ index, label }));
 }
 
-async function getCommits(_filters?: Filters): Promise<CommitEntry[]> {
+async function getCommits(repo: string, _filters?: Filters): Promise<CommitEntry[]> {
   // TODO: apply filters (hidden categories, hidden refs, expanded merges)
   const excludeArgs: string[] = [];
 
-  const stashEntries = await gitLinesQuiet("stash", "list", "--format=%H\t%gd");
+  const stashEntries = await gitLinesQuiet(repo, "stash", "list", "--format=%H\t%gd");
   const stashHashes = stashEntries.map((l) => l.split("\t")[0]!).filter(Boolean);
   const stashSet = new Set(stashHashes);
 
   const [statusOut, headHash] = await Promise.all([
-    gitQuiet("status", "--porcelain"),
-    gitQuiet("rev-parse", "HEAD"),
+    gitQuiet(repo, "status", "--porcelain"),
+    gitQuiet(repo, "rev-parse", "HEAD"),
   ]);
 
   const lines = await gitLines(
+    repo,
     "log",
     ...excludeArgs,
     "--all",
@@ -148,7 +165,7 @@ async function getCommits(_filters?: Filters): Promise<CommitEntry[]> {
     "--max-count=200",
   );
 
-  const head = await gitQuiet("rev-parse", "--abbrev-ref", "HEAD");
+  const head = await gitQuiet(repo, "rev-parse", "--abbrev-ref", "HEAD");
   const commits: CommitEntry[] = [];
 
   // Uncommitted entry
@@ -219,16 +236,16 @@ function parseDecorations(refsRaw: string, headBranch: string): Decoration[] {
   return deco;
 }
 
-async function getCommitDetail(hash: string): Promise<CommitDetail> {
+async function getCommitDetail(repo: string, hash: string): Promise<CommitDetail> {
   if (hash === "__uncommitted__") {
-    return getUncommittedDetail();
+    return getUncommittedDetail(repo);
   }
 
   const [info, diffStat, diffRaw, nameStatusRaw] = await Promise.all([
-    git("show", "--no-patch", "--format=%H\t%P\t%an\t%ae\t%aI\t%cn\t%ce\t%cI\t%B", hash),
-    git("diff-tree", "--no-commit-id", "-r", "--numstat", "-m", "--first-parent", hash),
-    git("diff-tree", "--no-commit-id", "-p", "-U3", "-m", "--first-parent", hash),
-    git("diff-tree", "--no-commit-id", "-r", "--name-status", "-m", "--first-parent", hash),
+    git(repo, "show", "--no-patch", "--format=%H\t%P\t%an\t%ae\t%aI\t%cn\t%ce\t%cI\t%B", hash),
+    git(repo, "diff-tree", "--no-commit-id", "-r", "--numstat", "-m", "--first-parent", hash),
+    git(repo, "diff-tree", "--no-commit-id", "-p", "-U3", "-m", "--first-parent", hash),
+    git(repo, "diff-tree", "--no-commit-id", "-r", "--name-status", "-m", "--first-parent", hash),
   ]);
 
   const parts = info.split("\t");
@@ -263,19 +280,19 @@ async function getCommitDetail(hash: string): Promise<CommitDetail> {
   };
 }
 
-async function getUncommittedDetail(): Promise<CommitDetail> {
+async function getUncommittedDetail(repo: string): Promise<CommitDetail> {
   const [headHash, diffStat, diffRaw, statusOut] = await Promise.all([
-    gitQuiet("rev-parse", "HEAD"),
-    gitQuiet("diff", "--numstat", "HEAD"),
-    gitQuiet("diff", "-U3", "HEAD"),
-    gitQuiet("status", "--porcelain"),
+    gitQuiet(repo, "rev-parse", "HEAD"),
+    gitQuiet(repo, "diff", "--numstat", "HEAD"),
+    gitQuiet(repo, "diff", "-U3", "HEAD"),
+    gitQuiet(repo, "status", "--porcelain"),
   ]);
 
   const [stagedStat, unstagedStat, stagedRaw, unstagedRaw] = await Promise.all([
-    gitQuiet("diff", "--cached", "--numstat"),
-    gitQuiet("diff", "--numstat"),
-    gitQuiet("diff", "--cached", "-U3"),
-    gitQuiet("diff", "-U3"),
+    gitQuiet(repo, "diff", "--cached", "--numstat"),
+    gitQuiet(repo, "diff", "--numstat"),
+    gitQuiet(repo, "diff", "--cached", "-U3"),
+    gitQuiet(repo, "diff", "-U3"),
   ]);
 
   const files = parseNumstat(diffStat);
@@ -464,13 +481,13 @@ type RouterHandlers = { [K in keyof RouterMethods]: HandlerOf<K> };
 
 const handlers: RouterHandlers = {
   getRepos: () => getRepos(),
-  getLocations: () => getLocations(),
-  getCommits: ({ filters }) => getCommits(filters),
-  getCommitDetail: ({ hash }) => getCommitDetail(hash),
+  getLocations: ({ repo }) => getLocations(repo),
+  getCommits: ({ repo, filters }) => getCommits(repo, filters),
+  getCommitDetail: ({ repo, hash }) => getCommitDetail(repo, hash),
   getPinnedRefs: async () => [],
   action: async () => {},
   setPinnedRefs: async () => {},
-  focusCommit: () => getCommits(), // TODO: windowed
+  focusCommit: ({ repo }) => getCommits(repo), // TODO: windowed
 };
 
 // ── Server ──
@@ -542,4 +559,4 @@ try {
 }
 
 console.log(`merge-code v3 dev server → http://localhost:${PORT}`);
-console.log(`repo: ${repoPath}`);
+console.log(`repo: ${defaultRepo}`);

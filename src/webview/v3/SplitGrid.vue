@@ -57,7 +57,8 @@ function onPointerUp() {
 <style scoped>
 .split-grid {
   display: grid;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   overflow-x: auto;
 }

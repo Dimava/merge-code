@@ -181,17 +181,16 @@ export interface AppState {
 
 export interface RouterQueries {
   getRepos(): Promise<RepoInfo[]>;
-  getLocations(): Promise<LocationsData>;
-  getCommits(args: { filters: Filters }): Promise<CommitEntry[]>;
-  getCommitDetail(args: { hash: string }): Promise<CommitDetail>;
-  getPinnedRefs(): Promise<string[]>;
+  getLocations(args: { repo: string }): Promise<LocationsData>;
+  getCommits(args: { repo: string; filters: Filters }): Promise<CommitEntry[]>;
+  getCommitDetail(args: { repo: string; hash: string }): Promise<CommitDetail>;
+  getPinnedRefs(args: { repo: string }): Promise<string[]>;
 }
 
 export interface RouterMutations {
-  switchRepo(args: { repoId: string }): Promise<void>;
-  action(args: { action: string; context: unknown }): Promise<void>;
-  setPinnedRefs(args: { refs: string[] }): Promise<void>;
-  focusCommit(args: { hash: string }): Promise<CommitEntry[]>;
+  action(args: { repo: string; action: string; context: unknown }): Promise<void>;
+  setPinnedRefs(args: { repo: string; refs: string[] }): Promise<void>;
+  focusCommit(args: { repo: string; hash: string }): Promise<CommitEntry[]>;
 }
 
 export interface RouterSubscriptions {

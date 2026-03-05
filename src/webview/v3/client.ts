@@ -1,45 +1,37 @@
-import type {
-  RouterQueries,
-  RouterMutations,
-  RouterSubscriptions,
-  Router,
-} from "./plan";
+import type { RouterQueries, RouterMutations, RouterSubscriptions, Router } from "./plan";
 
 type RpcRequest = { id: number; method: string; params?: unknown };
 type RpcResponse = { id: number; result?: unknown; error?: string };
-type SubscriptionMessage = { type: "subscription"; event: string };
 
 export function createWebSocketClient(url: string): Router & { close(): void } {
   const ws = new WebSocket(url);
   let nextId = 1;
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-  const subscriptionHandlers: Record<string, Set<() => void>> = {};
+  const subscriptionHandlers = new Map<string, Set<() => void>>();
 
   ws.addEventListener("message", (e) => {
-    const msg = JSON.parse(String(e.data));
+    const msg: RpcResponse & { type?: string; event?: string } = JSON.parse(String(e.data));
 
     if (msg.type === "subscription") {
-      const sub = msg as SubscriptionMessage;
-      const handlers = subscriptionHandlers[sub.event];
+      const handlers = subscriptionHandlers.get(msg.event!);
       if (handlers) handlers.forEach((cb) => cb());
       return;
     }
 
-    const resp = msg as RpcResponse;
-    const p = pending.get(resp.id);
+    const p = pending.get(msg.id);
     if (!p) return;
-    pending.delete(resp.id);
-    if (resp.error) {
-      p.reject(new Error(resp.error));
-    } else {
-      p.resolve(resp.result);
-    }
+    pending.delete(msg.id);
+    if (msg.error) p.reject(new Error(msg.error));
+    else p.resolve(msg.result);
   });
 
-  function call(method: string, params?: unknown): Promise<unknown> {
+  function call<T>(method: string, params?: unknown): Promise<T> {
     return new Promise((resolve, reject) => {
       const id = nextId++;
-      pending.set(id, { resolve, reject });
+      pending.set(id, {
+        resolve: resolve as (v: unknown) => void,
+        reject,
+      });
       const msg: RpcRequest = { id, method, ...(params !== undefined && { params }) };
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
@@ -50,38 +42,49 @@ export function createWebSocketClient(url: string): Router & { close(): void } {
   }
 
   function subscribe(event: string, cb: () => void): () => void {
-    if (!subscriptionHandlers[event]) subscriptionHandlers[event] = new Set();
-    subscriptionHandlers[event]!.add(cb);
-    return () => subscriptionHandlers[event]!.delete(cb);
+    let set = subscriptionHandlers.get(event);
+    if (!set) {
+      set = new Set();
+      subscriptionHandlers.set(event, set);
+    }
+    set.add(cb);
+    return () => set.delete(cb);
   }
 
-  const queries: RouterQueries = {
-    getRepos: () => call("getRepos") as ReturnType<RouterQueries["getRepos"]>,
-    getLocations: () => call("getLocations") as ReturnType<RouterQueries["getLocations"]>,
-    getCommits: (args) => call("getCommits", args) as ReturnType<RouterQueries["getCommits"]>,
-    getCommitDetail: (args) =>
-      call("getCommitDetail", args) as ReturnType<RouterQueries["getCommitDetail"]>,
-    getPinnedRefs: () => call("getPinnedRefs") as ReturnType<RouterQueries["getPinnedRefs"]>,
+  // Build typed proxy from router interfaces so each method
+  // just forwards its args to `call` with the right return type.
+  type MethodProxy<T> = {
+    [K in keyof T]: T[K] extends (args: infer A) => Promise<infer R>
+      ? (args: A) => Promise<R>
+      : T[K] extends () => Promise<infer R>
+        ? () => Promise<R>
+        : never;
   };
 
-  const mutations: RouterMutations = {
-    switchRepo: (args) => call("switchRepo", args) as ReturnType<RouterMutations["switchRepo"]>,
-    action: (args) => call("action", args) as ReturnType<RouterMutations["action"]>,
-    setPinnedRefs: (args) =>
-      call("setPinnedRefs", args) as ReturnType<RouterMutations["setPinnedRefs"]>,
-    focusCommit: (args) =>
-      call("focusCommit", args) as ReturnType<RouterMutations["focusCommit"]>,
-  };
+  function proxyGroup<T extends Record<string, (...args: never[]) => Promise<unknown>>>(
+    keys: (keyof T & string)[],
+  ): MethodProxy<T> {
+    const obj = {} as Record<string, (args?: unknown) => Promise<unknown>>;
+    for (const key of keys) {
+      obj[key] = (args?: unknown) => call(key, args);
+    }
+    return obj as MethodProxy<T>;
+  }
+
+  const queries = proxyGroup<RouterQueries>([
+    "getRepos",
+    "getLocations",
+    "getCommits",
+    "getCommitDetail",
+    "getPinnedRefs",
+  ]);
+
+  const mutations = proxyGroup<RouterMutations>(["action", "setPinnedRefs", "focusCommit"]);
 
   const subscriptions: RouterSubscriptions = {
     onRepoChanged: (cb) => subscribe("repoChanged", cb),
     onRepoListChanged: (cb) => subscribe("repoListChanged", cb),
   };
 
-  return {
-    queries,
-    mutations,
-    subscriptions,
-    close: () => ws.close(),
-  };
+  return { queries, mutations, subscriptions, close: () => ws.close() };
 }

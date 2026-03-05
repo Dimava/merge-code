@@ -1,11 +1,22 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
   background: #1e1e1e;
   color: #ccc;
 }
-#app { display: flex; height: 100vh; }
+#app {
+  display: flex;
+  height: 100vh;
+}
 .loading {
-  display: flex; align-items: center; justify-content: center;
-  width: 100%; height: 100%; color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #888;
 }

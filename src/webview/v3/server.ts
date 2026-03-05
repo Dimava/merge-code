@@ -15,6 +15,8 @@ import type {
   FileChange,
   DiffHunk,
   Filters,
+  RouterQueries,
+  RouterMutations,
 } from "./plan";
 
 // ── Config ──
@@ -191,9 +193,7 @@ async function getCommits(_filters?: Filters): Promise<CommitEntry[]> {
     }
   }
 
-  return stashInternals.size > 0
-    ? commits.filter((c) => !stashInternals.has(c.hash))
-    : commits;
+  return stashInternals.size > 0 ? commits.filter((c) => !stashInternals.has(c.hash)) : commits;
 }
 
 function parseDecorations(refsRaw: string, headBranch: string): Decoration[] {
@@ -240,15 +240,14 @@ async function getCommitDetail(hash: string): Promise<CommitDetail> {
   const committerDate = parts[7]!;
   const body = parts.slice(8).join("\t").trim();
 
-  const sameCommitter =
-    authorName === committerName && authorEmail === committerEmail;
+  const sameCommitter = authorName === committerName && authorEmail === committerEmail;
 
   const statFiles = parseNumstat(diffStat);
   const modes = parseNameStatus(nameStatusRaw);
   const diffs = parseDiff(diffRaw);
   const files: FileChange[] = statFiles.map((f) => ({
     ...f,
-    mode: (modes.get(f.path) ?? "M") as FileChange["mode"],
+    mode: fileMode(modes.get(f.path)),
     hunks: diffs[f.path] ?? [],
   }));
 
@@ -296,25 +295,25 @@ async function getUncommittedDetail(): Promise<CommitDetail> {
 
   const detailedFiles: FileChange[] = files.map((f) => ({
     ...f,
-    mode: (modes.get(f.path) ?? "M") as FileChange["mode"],
+    mode: fileMode(modes.get(f.path)),
     hunks: diffs[f.path] ?? [],
   }));
 
   const stagedFiles: FileChange[] = parseNumstat(stagedStat).map((f) => ({
     ...f,
-    mode: (modes.get(f.path) ?? "M") as FileChange["mode"],
+    mode: fileMode(modes.get(f.path)),
     hunks: parseDiff(stagedRaw)[f.path] ?? [],
   }));
 
   const unstagedFiles: FileChange[] = parseNumstat(unstagedStat).map((f) => ({
     ...f,
-    mode: (modes.get(f.path) ?? "M") as FileChange["mode"],
+    mode: fileMode(modes.get(f.path)),
     hunks: parseDiff(unstagedRaw)[f.path] ?? [],
   }));
 
   const untrackedFiles: FileChange[] = untrackedPaths.map((p) => ({
     path: p,
-    mode: "??" as const,
+    mode: fileMode("??"),
     added: 0,
     deleted: 0,
     hunks: [],
@@ -335,6 +334,12 @@ async function getUncommittedDetail(): Promise<CommitDetail> {
       untracked: untrackedFiles,
     },
   };
+}
+
+function fileMode(raw: string | undefined): FileChange["mode"] {
+  const m = raw ?? "M";
+  if (m === "M" || m === "A" || m === "D" || m === "R" || m === "??") return m;
+  return "M";
 }
 
 // ── Parsers ──
@@ -446,19 +451,23 @@ type RpcResponse = {
   error?: string;
 };
 
-const handlers: Record<string, (params: unknown) => Promise<unknown>> = {
+// Derive handler map type from router interfaces — no `as` casts needed.
+type RouterMethods = RouterQueries & RouterMutations;
+type HandlerOf<K extends keyof RouterMethods> = RouterMethods[K] extends (
+  args: infer A,
+) => infer R
+  ? (params: A) => R
+  : RouterMethods[K] extends () => infer R
+    ? (params?: undefined) => R
+    : never;
+type RouterHandlers = { [K in keyof RouterMethods]: HandlerOf<K> };
+
+const handlers: RouterHandlers = {
   getRepos: () => getRepos(),
   getLocations: () => getLocations(),
-  getCommits: (p) => {
-    const { filters } = (p ?? {}) as { filters?: Filters };
-    return getCommits(filters);
-  },
-  getCommitDetail: (p) => {
-    const { hash } = p as { hash: string };
-    return getCommitDetail(hash);
-  },
+  getCommits: ({ filters }) => getCommits(filters),
+  getCommitDetail: ({ hash }) => getCommitDetail(hash),
   getPinnedRefs: async () => [],
-  switchRepo: async () => {},
   action: async () => {},
   setPinnedRefs: async () => {},
   focusCommit: () => getCommits(), // TODO: windowed
@@ -466,8 +475,7 @@ const handlers: Record<string, (params: unknown) => Promise<unknown>> = {
 
 // ── Server ──
 
-type WS = { send(msg: string): void };
-const clients = new Set<WS>();
+const clients = new Set<{ send(msg: string): void }>();
 
 const server = Bun.serve({
   port: PORT,
@@ -484,21 +492,21 @@ const server = Bun.serve({
   },
   websocket: {
     open(ws) {
-      clients.add(ws as unknown as WS);
+      clients.add(ws);
     },
     close(ws) {
-      clients.delete(ws as unknown as WS);
+      clients.delete(ws);
     },
     async message(ws, raw) {
-      const msg = JSON.parse(String(raw)) as RpcRequest;
-      const handler = handlers[msg.method];
-
+      const msg: RpcRequest = JSON.parse(String(raw));
       const response: RpcResponse = { id: msg.id };
-      if (!handler) {
+      if (!(msg.method in handlers)) {
         response.error = `Unknown method: ${msg.method}`;
       } else {
         try {
-          response.result = await handler(msg.params);
+          // Dynamic dispatch boundary: method is validated above, params are typed by caller
+          const fn: Function = handlers[msg.method as keyof RouterHandlers];
+          response.result = await fn(msg.params);
         } catch (err) {
           response.error = err instanceof Error ? err.message : String(err);
         }

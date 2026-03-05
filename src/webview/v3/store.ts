@@ -94,6 +94,41 @@ export const useAppStore = defineStore("app", () => {
     detail.value = await api.queries.getCommitDetail({ repo: activeRepo.value, hash });
   }
 
+  function togglePin(refKey: string) {
+    const next = new Set(filters.value.pinnedRefs);
+    if (next.has(refKey)) next.delete(refKey);
+    else next.add(refKey);
+    filters.value = { ...filters.value, pinnedRefs: next };
+  }
+
+  function isPinned(refKey: string) {
+    return filters.value.pinnedRefs.has(refKey);
+  }
+
+  const timeSorted = ref(new Set<string>());
+
+  function isTimeSorted(key: string) {
+    return timeSorted.value.has(key);
+  }
+
+  function toggleTimeSort(key: string) {
+    const next = new Set(timeSorted.value);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    timeSorted.value = next;
+  }
+
+  function toggleHide(refKey: string) {
+    const next = new Set(filters.value.hiddenRefs);
+    if (next.has(refKey)) next.delete(refKey);
+    else next.add(refKey);
+    filters.value = { ...filters.value, hiddenRefs: next };
+  }
+
+  function isHidden(refKey: string) {
+    return filters.value.hiddenRefs.has(refKey);
+  }
+
   return {
     repos,
     activeRepo,
@@ -108,5 +143,12 @@ export const useAppStore = defineStore("app", () => {
     switchRepo,
     selectCommit,
     toggleTheme,
+    togglePin,
+    isPinned,
+    toggleHide,
+    isHidden,
+    timeSorted,
+    isTimeSorted,
+    toggleTimeSort,
   };
 });

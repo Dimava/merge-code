@@ -20,12 +20,18 @@ export interface Branch {
   ahead: number; // 0 if not tracking
   behind: number;
   tracking: string | null; // "origin/main"
+  date: string; // relative
+}
+
+export interface RemoteBranch {
+  name: string;
+  date: string; // relative
 }
 
 export interface RemoteGroup {
   name: string; // "origin"
   url: string;
-  branches: string[]; // just names: ["main", "develop"]
+  branches: RemoteBranch[];
 }
 
 export interface Tag {

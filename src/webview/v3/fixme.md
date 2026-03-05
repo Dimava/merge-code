@@ -2,6 +2,18 @@
 
 ## Review Findings (2026-03-05)
 
+- [P2] Use a stable, real-time comparator for ref "time sort" (`src/webview/v3/Locations.vue:17`, `src/webview/v3/Locations.vue:35`).
+  Current sorting compares relative-date strings (`a.date < b.date`) and never returns `0`, so equal/missing dates are reordered unpredictably and many values ("9 minutes ago" vs "12 minutes ago") are not sorted chronologically.
+  Sort by a comparable timestamp value (or precomputed rank) and return `0` when dates are equal.
+
+- [P2] Populate branch/remote dates before rendering time-sorted ref rows (`src/webview/v3/Locations.vue:66`, `src/webview/v3/Locations.vue:103`).
+  Time-sort mode renders `b.date`/`item.date`, but current location payloads still provide branch names (and remote branch strings), so date cells are blank and ordering logic operates on missing values.
+  Extend the locations RPC to include branch/remote branch dates consistently before exposing time sort in the sidebar.
+
+- [P3] Wire tags sort toggle to actual tag ordering (`src/webview/v3/Locations.vue:114`).
+  `sort-key="tags"` enables the header sort button, but the tag list always renders `store.locations.tags` in the same order and never checks `store.isTimeSorted("tags")`.
+  Either add name/time sorting for tags or remove the sort affordance to avoid a no-op control.
+
 - [P2] Watch all selectable repos instead of only `defaultRepo` (`src/webview/v3/server.ts:548`).
   The filesystem watcher is hardcoded to `defaultRepo`, so after switching to another repo tab, external Git changes in that active repo never emit `repoChanged` and the UI stays stale until manual refresh.
   Watch all selectable repos (or rebind watcher on active repo change) so live updates continue to work after tab switches.

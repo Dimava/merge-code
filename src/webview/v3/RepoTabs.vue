@@ -45,6 +45,7 @@ const store = useAppStore();
   display: flex;
   flex: 1;
   overflow-x: auto;
+  overflow-y: hidden;
   gap: 0;
 }
 

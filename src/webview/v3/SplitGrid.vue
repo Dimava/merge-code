@@ -31,40 +31,52 @@ function onPointerUp() {
 </script>
 
 <template>
-  <div
-    ref="container"
-    class="split-grid"
-    :style="{
-      gridTemplateColumns: `${col1}px 1px ${col2}px 1px minmax(${minPane3}px, 1fr)`,
-    }"
-    @pointermove="onPointerMove"
-    @pointerup="onPointerUp"
-  >
-    <div class="pane-slot">
-      <slot name="pane1" />
-    </div>
-    <div class="divider" @pointerdown="onPointerDown(1, $event)" />
-    <div class="pane-slot">
-      <slot name="pane2" />
-    </div>
-    <div class="divider" @pointerdown="onPointerDown(2, $event)" />
-    <div class="pane-slot">
-      <slot name="pane3" />
+  <div class="split-grid-scroll">
+    <div
+      ref="container"
+      class="split-grid"
+      :style="{
+        gridTemplateColumns: `${col1}px 1px ${col2}px 1px minmax(${minPane3}px, 1fr)`,
+      }"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+    >
+      <div class="pane-slot">
+        <slot name="pane1" />
+      </div>
+      <div class="divider" @pointerdown="onPointerDown(1, $event)" />
+      <div class="pane-slot">
+        <slot name="pane2" />
+      </div>
+      <div class="divider" @pointerdown="onPointerDown(2, $event)" />
+      <div class="pane-slot">
+        <slot name="pane3" />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.split-grid {
-  display: grid;
+.split-grid-scroll {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.split-grid {
+  display: grid;
+  height: 100%;
   width: 100%;
-  overflow: hidden;
+  min-width: max-content;
+  min-height: 0;
 }
 
 .pane-slot {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
   min-width: 0;
 }
 

@@ -9,3 +9,7 @@
 - [P2] Use unique file-row identity for working tree entries (`src/webview/v3/CommitDetail.vue:110`).
   Using `f.path` as the row key and expansion key breaks when the same file appears in both staged and unstaged sections for partially staged changes.
   Use a unique key per row (for example include section/stage in the identity) so expansion state and diff rendering stay correct.
+
+- [P3] Avoid shipping UnoCSS runtime when no utility classes are used (`src/webview/v3/index.html:7`).
+  Adding `@unocss/runtime/uno.global.js` and the reset stylesheet makes Bun bundle extra runtime/reset payload into `index-q*.js/css` for every webview load, but the current v3 templates use only component-scoped classes, so this adds startup cost without functional benefit.
+  Remove these includes (or switch to build-time UnoCSS generation when utility classes are actually introduced) to keep the panel lightweight.

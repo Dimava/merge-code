@@ -496,7 +496,7 @@ const handlers: RouterHandlers = {
 
 const clients = new Set<{ send(msg: string): void }>();
 
-const server = Bun.serve({
+Bun.serve({
   port: PORT,
   routes: {
     "/": homepage,
@@ -534,7 +534,10 @@ const server = Bun.serve({
       ws.send(JSON.stringify(response));
     },
   },
-  development: true,
+  development: {
+    hmr: true,
+    console: true,
+  },
 });
 
 // ── Watch .git for changes ──
